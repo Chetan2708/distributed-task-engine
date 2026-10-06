@@ -10,6 +10,8 @@ services:
       POSTGRES_DB: jobflow
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - jobflow-net
 
   kafka:
     image: apache/kafka:3.7.0
@@ -19,14 +21,73 @@ services:
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,INTERNAL://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,INTERNAL://kafka:29092
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,INTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@0.0.0.0:9093
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+    networks:
+      - jobflow-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: jobflow-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - jobflow-net
+
+  job-service:
+    build:
+      context: ./job-service
+    container_name: jobflow-service
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/jobflow
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - SPRING_REDIS_HOST=redis
+    depends_on:
+      - postgres
+      - kafka
+      - redis
+    networks:
+      - jobflow-net
+
+  job-worker:
+    build:
+      context: ./job-worker
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/jobflow
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - SPRING_REDIS_HOST=redis
+    depends_on:
+      - postgres
+      - kafka
+      - redis
+    networks:
+      - jobflow-net
+    deploy:
+      replicas: 1
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: jobflow-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - job-service
+    networks:
+      - jobflow-net
 
 volumes:
   postgres_data:
+
+networks:
+  jobflow-net:
+    driver: bridge
