@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -32,6 +33,11 @@ public class JobController {
     @GetMapping
     public ResponseEntity<List<JobEntity>> getAllJobs() {
         return ResponseEntity.ok(jobService.getAllJobs());
+    }
+
+    @GetMapping("/stats")
+    public ResponseEntity<Map<String, Long>> getJobStats() {
+        return ResponseEntity.ok(jobService.getStats());
     }
 
     @PutMapping("/{id}/status")

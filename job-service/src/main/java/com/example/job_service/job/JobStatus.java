@@ -5,13 +5,14 @@ public enum JobStatus {
     QUEUED,
     PROCESSING,
     SUCCESS,
-    FAILED;
+    FAILED,
+    ERROR;
 
     public boolean canTransitionTo(JobStatus newStatus) {
         return switch (this) {
-            case CREATED -> newStatus == QUEUED;
+            case CREATED, ERROR -> newStatus == QUEUED;
             case QUEUED -> newStatus == PROCESSING;
-            case PROCESSING -> newStatus == SUCCESS || newStatus == FAILED;
+            case PROCESSING -> newStatus == SUCCESS || newStatus == FAILED || newStatus == ERROR;
             case SUCCESS, FAILED -> false;
         };
     }

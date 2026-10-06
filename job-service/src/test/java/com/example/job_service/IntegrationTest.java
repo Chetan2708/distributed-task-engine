@@ -101,6 +101,7 @@ public class IntegrationTest {
         assertNotNull(record);
         
         JobEvent event = gson.fromJson(record.value(), JobEvent.class);
+        assertNotNull(event.getMessageId());
         assertEquals(jobId, event.getJobId());
         assertEquals("INTEGRATION_TEST", event.getType());
     }

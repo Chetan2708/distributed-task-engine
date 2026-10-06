@@ -15,4 +15,12 @@ public class KafkaTopicConfig {
                 .replicas(1)
                 .build();
     }
+
+    @Bean
+    public NewTopic jobDlqTopic() {
+        return TopicBuilder.name("job-dlq")
+                .partitions(1)
+                .replicas(1)
+                .build();
+    }
 }

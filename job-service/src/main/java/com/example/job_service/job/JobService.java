@@ -4,6 +4,8 @@ import com.example.job_service.job.dto.CreateJobRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.UUID;
 
 @Service
@@ -28,7 +30,7 @@ public class JobService {
         JobEntity savedJob = jobRepository.save(job);
         
         // Send event to Kafka
-        kafkaJobProducer.sendJobCreatedEvent(new com.example.job_service.job.dto.JobEvent(savedJob.getId(), savedJob.getType()));
+        kafkaJobProducer.sendJobCreatedEvent(new com.example.job_service.job.dto.JobEvent(UUID.randomUUID(), savedJob.getId(), savedJob.getType()));
         
         return savedJob;
     }
@@ -57,5 +59,16 @@ public class JobService {
         }
         
         return jobRepository.save(job);
+    }
+
+    public Map<String, Long> getStats() {
+        Map<String, Long> stats = new HashMap<>();
+        stats.put("total", jobRepository.count());
+        stats.put("queued", jobRepository.countByStatus(JobStatus.QUEUED));
+        stats.put("processing", jobRepository.countByStatus(JobStatus.PROCESSING));
+        stats.put("successful", jobRepository.countByStatus(JobStatus.SUCCESS));
+        stats.put("failed", jobRepository.countByStatus(JobStatus.ERROR));
+        stats.put("dlq", jobRepository.countByStatus(JobStatus.FAILED));
+        return stats;
     }
 }
