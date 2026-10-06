@@ -9,6 +9,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 public class JobEvent {
+    private UUID messageId;
     private UUID jobId;
     private String type;
 }

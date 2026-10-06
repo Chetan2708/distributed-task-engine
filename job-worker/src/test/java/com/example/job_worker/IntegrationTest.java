@@ -11,6 +11,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
@@ -25,6 +28,9 @@ import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
 
 @SpringBootTest(properties = {
     "spring.datasource.url=jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1",
@@ -49,6 +55,12 @@ public class IntegrationTest {
 
     private KafkaTemplate<String, String> kafkaTemplate;
 
+    @MockitoBean
+    private StringRedisTemplate redisTemplate;
+
+    @MockitoBean
+    private ValueOperations<String, String> valueOperations;
+
     @BeforeEach
     void setUp() {
         jobRepository.deleteAll();
@@ -58,6 +70,9 @@ public class IntegrationTest {
         producerProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         ProducerFactory<String, String> producerFactory = new DefaultKafkaProducerFactory<>(producerProps);
         kafkaTemplate = new KafkaTemplate<>(producerFactory);
+
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.setIfAbsent(anyString(), anyString(), any(java.time.Duration.class))).thenReturn(true);
     }
 
     @Test
@@ -70,7 +85,7 @@ public class IntegrationTest {
         jobRepository.save(job);
 
         // 2. Publish Kafka Event
-        JobEvent event = new JobEvent(job.getId(), "TEST_JOB");
+        JobEvent event = new JobEvent(UUID.randomUUID(), job.getId(), "TEST_JOB");
         kafkaTemplate.send("job-events", gson.toJson(event));
 
         // 3. Await and Verify Database Update (Worker takes 3 seconds to process)

@@ -11,6 +11,7 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.UUID;
 
 @Entity
@@ -29,10 +30,10 @@ public class JobEntity {
     private Integer priority = 0;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    private Object payload;
+    private Map<String, Object> payload;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    private Object result;
+    private Map<String, Object> result;
 
     @Column(name = "retry_count")
     private Integer retryCount = 0;
