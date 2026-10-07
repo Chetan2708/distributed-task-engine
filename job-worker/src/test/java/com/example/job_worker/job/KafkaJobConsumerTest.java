@@ -82,7 +82,6 @@ class KafkaJobConsumerTest {
         job.setStatus(JobStatus.CREATED);
         
         when(redissonClient.getLock(anyString())).thenReturn(lock);
-        when(lock.tryLock()).thenReturn(true);
         when(lock.isHeldByCurrentThread()).thenReturn(true);
 
         when(jobRepository.findById(jobId)).thenReturn(Optional.of(job));
@@ -117,7 +116,6 @@ class KafkaJobConsumerTest {
         job.setPayload(payload);
         
         when(redissonClient.getLock(anyString())).thenReturn(lock);
-        when(lock.tryLock()).thenReturn(true);
         when(lock.isHeldByCurrentThread()).thenReturn(true);
 
         when(jobRepository.findById(jobId)).thenReturn(Optional.of(job));
@@ -161,7 +159,6 @@ class KafkaJobConsumerTest {
         job.setPayload(payload);
         
         when(redissonClient.getLock(anyString())).thenReturn(lock);
-        when(lock.tryLock()).thenReturn(true);
         when(lock.isHeldByCurrentThread()).thenReturn(true);
 
         when(jobRepository.findById(jobId)).thenReturn(Optional.of(job));
@@ -194,7 +191,6 @@ class KafkaJobConsumerTest {
         job.setStatus(JobStatus.SUCCESS);
 
         when(redissonClient.getLock(anyString())).thenReturn(lock);
-        when(lock.tryLock()).thenReturn(true);
         when(lock.isHeldByCurrentThread()).thenReturn(true);
         when(jobRepository.findById(jobId)).thenReturn(Optional.of(job));
 
@@ -209,24 +205,5 @@ class KafkaJobConsumerTest {
         });
     }
 
-    @Test
-    void consume_skipsWhenLockDenied() {
-        // Arrange
-        UUID jobId = UUID.randomUUID();
-        UUID messageId = UUID.randomUUID();
-        JobEvent event = new JobEvent(messageId, jobId, "TEST");
-        String message = gson.toJson(event);
 
-        when(redissonClient.getLock(anyString())).thenReturn(lock);
-        when(lock.tryLock()).thenReturn(false);
-
-        // Act
-        kafkaJobConsumer.consume(message);
-
-        // Assert
-        Awaitility.await().atMost(5, TimeUnit.SECONDS).untilAsserted(() -> {
-            verify(jobRepository, never()).save(any());
-            verify(lock, never()).unlock();
-        });
-    }
 }

@@ -9,6 +9,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.kafka.core.KafkaTemplate;
+import com.google.gson.Gson;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -33,14 +34,11 @@ class AdvancedWorkerFailureTest {
     @Mock
     private RedissonClient redissonClient;
 
-    @Mock
-    private ExecutorService executorService;
-    
-    @Mock
-    private JobHandlerFactory jobHandlerFactory;
-    
+
     @Mock
     private RLock lock;
+
+    private final Gson gson = new Gson();
 
     @InjectMocks
     private KafkaJobConsumer consumer;
@@ -56,33 +54,14 @@ class AdvancedWorkerFailureTest {
         completedJob.setStatus(JobStatus.SUCCESS); // Already successful
         
         when(jobRepository.findById(jobId)).thenReturn(Optional.of(completedJob));
+        when(redissonClient.getLock("lock:job:" + jobId)).thenReturn(lock);
         
         // Execute
-        consumer.consume(event.toString());
+        consumer.consume(gson.toJson(event));
         
         // Verify
         verify(jobRepository, never()).save(any());
         verify(redissonClient, never()).getLock(anyString());
     }
 
-    @Test
-    void shouldHandleLockExpirationOrDenial() throws Exception {
-        UUID jobId = UUID.randomUUID();
-        JobEvent event = new JobEvent(UUID.randomUUID(), jobId, "TEST");
-        
-        JobEntity job = new JobEntity();
-        job.setId(jobId);
-        job.setStatus(JobStatus.QUEUED);
-        
-        when(jobRepository.findById(jobId)).thenReturn(Optional.of(job));
-        when(redissonClient.getLock("job-lock:" + jobId)).thenReturn(lock);
-        // Lock denied
-        when(lock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(false);
-        
-        // Execute
-        consumer.consume(event.toString());
-        
-        // Verify we didn't try to process
-        verify(executorService, never()).submit(any(Runnable.class));
-    }
 }

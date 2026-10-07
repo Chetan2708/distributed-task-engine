@@ -13,9 +13,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import jakarta.annotation.PreDestroy;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
@@ -34,7 +31,6 @@ public class KafkaJobConsumer {
     private final com.google.gson.Gson gson = new com.google.gson.Gson();
     
     private final Map<String, JobHandler> handlers = new HashMap<>();
-    private final ExecutorService executorService = Executors.newFixedThreadPool(10);
 
     public KafkaJobConsumer(JobRepository jobRepository,
                             ProcessedMessageRepository processedMessageRepository,
@@ -55,11 +51,6 @@ public class KafkaJobConsumer {
         }
     }
 
-    @PreDestroy
-    public void shutdown() {
-        executorService.shutdown();
-    }
-
     @KafkaListener(topics = "job-events", groupId = "job-worker-group")
     public void consume(String message) {
         JobEvent event;
@@ -77,18 +68,18 @@ public class KafkaJobConsumer {
             return;
         }
 
-        // Submit to executor so we don't block the Kafka poll loop
-        executorService.submit(() -> processJob(event, handler));
+        // Process synchronously to ensure Kafka offset is only committed 
+        // AFTER the job has safely executed or a durable retry is scheduled.
+        processJob(event, handler);
     }
 
     private void processJob(JobEvent event, JobHandler handler) {
         String lockKey = "lock:job:" + event.getJobId();
         RLock lock = redissonClient.getLock(lockKey);
         
-        if (!lock.tryLock()) {
-            log.warn("Job {} is currently locked by another worker. Skipping.", event.getJobId());
-            return;
-        }
+        // Wait for the lock if another worker is processing (e.g. during a rebalance)
+        // This ensures we don't skip the message and prematurely commit the offset.
+        lock.lock();
 
         JobEntity job = null;
         try {

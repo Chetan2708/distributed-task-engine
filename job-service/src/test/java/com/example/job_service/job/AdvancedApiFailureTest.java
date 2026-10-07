@@ -27,7 +27,7 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.context.annotation.Import;
 import com.example.job_service.config.SecurityConfig;
 import com.example.job_service.config.JwtUtil;
-import com.example.job_service.auth.JwtFilter;
+import com.example.job_service.config.JwtFilter;
 
 @WebMvcTest(JobController.class)
 @AutoConfigureMockMvc(addFilters = false)
