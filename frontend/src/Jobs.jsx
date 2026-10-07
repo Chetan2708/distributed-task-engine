@@ -1,15 +1,21 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { fetchWithAuth } from './api';
 
 export default function Jobs() {
   const [jobs, setJobs] = useState([]);
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
 
   useEffect(() => {
-    fetch('http://localhost:8080/api/v1/jobs')
+    fetchWithAuth(`/jobs?page=${page}&size=10&sort=createdAt,desc`)
       .then(res => res.json())
-      .then(data => setJobs(data))
+      .then(data => {
+        setJobs(data.content || []);
+        setTotalPages(data.totalPages || 0);
+      })
       .catch(err => console.error(err));
-  }, []);
+  }, [page]);
 
   const getBadgeClass = (status) => {
     switch (status) {
@@ -58,6 +64,28 @@ export default function Jobs() {
             )}
           </tbody>
         </table>
+        
+        {totalPages > 1 && (
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', padding: '1rem', borderTop: '1px solid var(--border-color)' }}>
+            <button 
+              onClick={() => setPage(p => Math.max(0, p - 1))} 
+              disabled={page === 0}
+              style={{ padding: '0.5rem 1rem', background: 'var(--bg-dark)', color: 'white', border: '1px solid var(--border-color)', borderRadius: '4px', cursor: page === 0 ? 'not-allowed' : 'pointer' }}
+            >
+              Previous
+            </button>
+            <span style={{ display: 'flex', alignItems: 'center', color: 'var(--text-secondary)' }}>
+              Page {page + 1} of {totalPages}
+            </span>
+            <button 
+              onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} 
+              disabled={page === totalPages - 1}
+              style={{ padding: '0.5rem 1rem', background: 'var(--bg-dark)', color: 'white', border: '1px solid var(--border-color)', borderRadius: '4px', cursor: page === totalPages - 1 ? 'not-allowed' : 'pointer' }}
+            >
+              Next
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

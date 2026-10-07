@@ -12,8 +12,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.ValueOperations;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
@@ -56,10 +56,10 @@ public class IntegrationTest {
     private KafkaTemplate<String, String> kafkaTemplate;
 
     @MockitoBean
-    private StringRedisTemplate redisTemplate;
+    private RedissonClient redissonClient;
 
     @MockitoBean
-    private ValueOperations<String, String> valueOperations;
+    private RLock lock;
 
     @BeforeEach
     void setUp() {
@@ -71,8 +71,9 @@ public class IntegrationTest {
         ProducerFactory<String, String> producerFactory = new DefaultKafkaProducerFactory<>(producerProps);
         kafkaTemplate = new KafkaTemplate<>(producerFactory);
 
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.setIfAbsent(anyString(), anyString(), any(java.time.Duration.class))).thenReturn(true);
+        when(redissonClient.getLock(anyString())).thenReturn(lock);
+        when(lock.tryLock()).thenReturn(true);
+        when(lock.isHeldByCurrentThread()).thenReturn(true);
     }
 
     @Test
@@ -81,11 +82,11 @@ public class IntegrationTest {
         JobEntity job = new JobEntity();
         job.setId(UUID.randomUUID());
         job.setStatus(JobStatus.CREATED);
-        job.setType("TEST_JOB");
+        job.setType("TEST");
         jobRepository.save(job);
 
         // 2. Publish Kafka Event
-        JobEvent event = new JobEvent(UUID.randomUUID(), job.getId(), "TEST_JOB");
+        JobEvent event = new JobEvent(UUID.randomUUID(), job.getId(), "TEST");
         kafkaTemplate.send("job-events", gson.toJson(event));
 
         // 3. Await and Verify Database Update (Worker takes 3 seconds to process)

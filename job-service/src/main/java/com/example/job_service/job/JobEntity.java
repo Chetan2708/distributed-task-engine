@@ -16,16 +16,25 @@ import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.UUID;
 
+import jakarta.persistence.Version;
+
 @Data
 @Entity
 @Table(name = "jobs")
 public class JobEntity {
+
+    @Version
+    private Long version;
+
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
     private String type;
+
+    @Column(name = "user_id")
+    private String userId;
 
     @Enumerated(EnumType.STRING)
     private JobStatus status = JobStatus.CREATED;
@@ -60,6 +69,18 @@ public class JobEntity {
     public void prePersist() {
         if (createdAt == null) {
             createdAt = LocalDateTime.now();
+        }
+    }
+
+    public void transitionTo(JobStatus newStatus) {
+        if (!this.status.canTransitionTo(newStatus)) {
+            throw new IllegalStateException("Invalid state transition from " + this.status + " to " + newStatus);
+        }
+        this.status = newStatus;
+        if (newStatus == JobStatus.PROCESSING) {
+            this.startedAt = LocalDateTime.now();
+        } else if (newStatus == JobStatus.SUCCESS || newStatus == JobStatus.FAILED) {
+            this.completedAt = LocalDateTime.now();
         }
     }
 }

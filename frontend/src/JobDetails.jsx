@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { fetchWithAuth } from './api';
 
 export default function JobDetails() {
   const { id } = useParams();
   const [job, setJob] = useState(null);
 
   useEffect(() => {
-    fetch(`http://localhost:8080/api/v1/jobs/${id}`)
+    fetchWithAuth(`/jobs/${id}`)
       .then(res => res.json())
       .then(data => setJob(data))
       .catch(err => console.error(err));

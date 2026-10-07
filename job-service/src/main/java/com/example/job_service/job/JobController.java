@@ -5,6 +5,9 @@ import com.example.job_service.job.dto.CreateJobResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 import java.util.List;
 import java.util.Map;
@@ -13,13 +16,13 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/jobs")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
+@CrossOrigin(origins = "${app.frontend.url:http://localhost:5173}")
 public class JobController {
 
     private final JobService jobService;
 
     @PostMapping
-    public ResponseEntity<CreateJobResponse> createJob(@RequestBody CreateJobRequest request) {
+    public ResponseEntity<CreateJobResponse> createJob(@Valid @RequestBody CreateJobRequest request) {
         JobEntity job = jobService.createJob(request);
         CreateJobResponse response = new CreateJobResponse(job.getId(), job.getStatus().name());
         return ResponseEntity.ok(response);
@@ -31,8 +34,8 @@ public class JobController {
     }
 
     @GetMapping
-    public ResponseEntity<List<JobEntity>> getAllJobs() {
-        return ResponseEntity.ok(jobService.getAllJobs());
+    public ResponseEntity<Page<JobEntity>> getAllJobs(Pageable pageable) {
+        return ResponseEntity.ok(jobService.getAllJobs(pageable));
     }
 
     @GetMapping("/stats")
@@ -40,9 +43,4 @@ public class JobController {
         return ResponseEntity.ok(jobService.getStats());
     }
 
-    @PutMapping("/{id}/status")
-    public ResponseEntity<JobEntity> updateJobStatus(@PathVariable UUID id, @RequestBody com.example.job_service.job.dto.UpdateJobStatusRequest request) {
-        JobStatus newStatus = JobStatus.valueOf(request.getStatus().toUpperCase());
-        return ResponseEntity.ok(jobService.updateStatus(id, newStatus));
-    }
 }

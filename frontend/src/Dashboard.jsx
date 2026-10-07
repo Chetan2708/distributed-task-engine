@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Activity } from 'lucide-react';
+import { fetchWithAuth } from './api';
 
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
 
   useEffect(() => {
-    fetch('http://localhost:8080/api/v1/jobs/stats')
+    fetchWithAuth('/jobs/stats')
       .then(res => res.json())
       .then(data => setStats(data))
       .catch(err => console.error(err));

@@ -26,7 +26,7 @@ class JobServiceTest {
     private JobRepository jobRepository;
 
     @Mock
-    private KafkaJobProducer kafkaJobProducer;
+    private OutboxEventRepository outboxEventRepository;
 
     @InjectMocks
     private JobService jobService;
@@ -57,12 +57,13 @@ class JobServiceTest {
 
         verify(jobRepository, times(1)).save(any(JobEntity.class));
         
-        ArgumentCaptor<JobEvent> eventCaptor = ArgumentCaptor.forClass(JobEvent.class);
-        verify(kafkaJobProducer, times(1)).sendJobCreatedEvent(eventCaptor.capture());
+        ArgumentCaptor<OutboxEventEntity> eventCaptor = ArgumentCaptor.forClass(OutboxEventEntity.class);
+        verify(outboxEventRepository, times(1)).save(eventCaptor.capture());
         
-        JobEvent capturedEvent = eventCaptor.getValue();
-        assertEquals(savedJob.getId(), capturedEvent.getJobId());
-        assertEquals("TEST_JOB", capturedEvent.getType());
+        OutboxEventEntity capturedEvent = eventCaptor.getValue();
+        assertEquals(savedJob.getId().toString(), capturedEvent.getAggregateId());
+        assertNotNull(capturedEvent.getPayload());
+        assertTrue(capturedEvent.getPayload().contains(savedJob.getId().toString()));
     }
 
     @Test

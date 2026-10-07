@@ -1,10 +1,23 @@
 import { BrowserRouter as Router, Routes, Route, NavLink } from 'react-router-dom';
-import { LayoutDashboard, List, Settings } from 'lucide-react';
+import { LayoutDashboard, List, Settings, LogOut } from 'lucide-react';
+import { useState } from 'react';
 import Dashboard from './Dashboard';
 import Jobs from './Jobs';
 import JobDetails from './JobDetails';
+import Login from './Login';
 
 function App() {
+  const [token, setToken] = useState(localStorage.getItem('token'));
+
+  if (!token) {
+    return <Login onLogin={setToken} />;
+  }
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    setToken(null);
+  };
+
   return (
     <Router>
       <div className="app-container">
@@ -22,6 +35,10 @@ function App() {
             <a href="#" className="nav-link" style={{opacity: 0.5, cursor: 'not-allowed'}}>
               <Settings size={20} />
               Settings
+            </a>
+            <a href="#" className="nav-link" onClick={handleLogout} style={{marginTop: 'auto'}}>
+              <LogOut size={20} />
+              Logout
             </a>
           </nav>
         </aside>

@@ -14,15 +14,24 @@ import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.UUID;
 
+import jakarta.persistence.Version;
+
 @Entity
 @Table(name = "jobs")
 @Data
 public class JobEntity {
 
+    @Version
+    private Long version;
+
+
     @Id
     private UUID id = UUID.randomUUID();
 
     private String type;
+
+    @Column(name = "user_id")
+    private String userId;
 
     @Enumerated(EnumType.STRING)
     private JobStatus status = JobStatus.CREATED;
@@ -52,4 +61,16 @@ public class JobEntity {
 
     @Column(name = "error_message")
     private String errorMessage;
+
+    public void transitionTo(JobStatus newStatus) {
+        if (!this.status.canTransitionTo(newStatus)) {
+            throw new IllegalStateException("Invalid state transition from " + this.status + " to " + newStatus);
+        }
+        this.status = newStatus;
+        if (newStatus == JobStatus.PROCESSING) {
+            this.startedAt = LocalDateTime.now();
+        } else if (newStatus == JobStatus.SUCCESS || newStatus == JobStatus.FAILED) {
+            this.completedAt = LocalDateTime.now();
+        }
+    }
 }

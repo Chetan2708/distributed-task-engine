@@ -1,0 +1,1 @@
+ALTER TABLE jobs ADD COLUMN user_id VARCHAR(255);
