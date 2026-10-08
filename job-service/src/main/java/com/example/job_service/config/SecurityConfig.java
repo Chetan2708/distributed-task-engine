@@ -20,12 +20,26 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 
+import org.springframework.beans.factory.annotation.Value;
+
 @Configuration
 @EnableWebSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
 
     private final JwtFilter jwtFilter;
+
+    @Value("${jobflow.auth.user.username:user}")
+    private String userUsername;
+
+    @Value("${jobflow.auth.user.password:password}")
+    private String userPassword;
+
+    @Value("${jobflow.auth.admin.username:admin}")
+    private String adminUsername;
+
+    @Value("${jobflow.auth.admin.password:admin}")
+    private String adminPassword;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -48,14 +62,14 @@ public class SecurityConfig {
     @Bean
     public UserDetailsService userDetailsService() {
         UserDetails user = User.builder()
-            .username("user")
-            .password(passwordEncoder().encode("password"))
+            .username(userUsername)
+            .password(passwordEncoder().encode(userPassword))
             .roles("USER")
             .build();
             
         UserDetails admin = User.builder()
-            .username("admin")
-            .password(passwordEncoder().encode("admin"))
+            .username(adminUsername)
+            .password(passwordEncoder().encode(adminPassword))
             .roles("ADMIN", "USER")
             .build();
             

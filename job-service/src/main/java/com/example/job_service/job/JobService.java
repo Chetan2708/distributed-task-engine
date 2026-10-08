@@ -55,7 +55,20 @@ public class JobService {
     }
 
     public JobEntity getJob(UUID id) {
-        return jobRepository.findById(id).orElseThrow(() -> new JobNotFoundException(id));
+        JobEntity job = jobRepository.findById(id).orElseThrow(() -> new JobNotFoundException(id));
+        
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getName() != null && !auth.getName().equals("anonymousUser")) {
+            String username = auth.getName();
+            boolean isAdmin = auth.getAuthorities().stream()
+                    .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+                    
+            if (!isAdmin && job.getUserId() != null && !job.getUserId().equals(username)) {
+                throw new JobNotFoundException(id);
+            }
+        }
+        
+        return job;
     }
 
     public Page<JobEntity> getAllJobs(Pageable pageable) {

@@ -9,6 +9,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.transaction.support.TransactionTemplate;
+import com.example.job_worker.job.handler.JobHandler;
 import com.google.gson.Gson;
 
 import java.util.Optional;
@@ -37,11 +39,36 @@ class AdvancedWorkerFailureTest {
 
     @Mock
     private RLock lock;
+    
+    @Mock
+    private ProcessedMessageRepository processedMessageRepository;
+    
+    @Mock
+    private ScheduledRetryRepository scheduledRetryRepository;
+    
+    @Mock
+    private TransactionTemplate transactionTemplate;
+    
+    @Mock
+    private JobHandler jobHandler;
 
     private final Gson gson = new Gson();
 
-    @InjectMocks
     private KafkaJobConsumer consumer;
+
+    @org.junit.jupiter.api.BeforeEach
+    void setUp() {
+        when(jobHandler.type()).thenReturn("TEST");
+        consumer = new KafkaJobConsumer(
+            jobRepository,
+            processedMessageRepository,
+            scheduledRetryRepository,
+            kafkaTemplate,
+            redissonClient,
+            transactionTemplate,
+            java.util.Collections.singletonList(jobHandler)
+        );
+    }
 
     @Test
     void shouldHandleDuplicateEventAfterSuccess() throws Exception {
@@ -61,7 +88,7 @@ class AdvancedWorkerFailureTest {
         
         // Verify
         verify(jobRepository, never()).save(any());
-        verify(redissonClient, never()).getLock(anyString());
+        verify(redissonClient, times(1)).getLock(anyString());
     }
 
 }

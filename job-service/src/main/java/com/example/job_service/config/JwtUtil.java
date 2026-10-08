@@ -9,12 +9,24 @@ import javax.crypto.SecretKey;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import jakarta.annotation.PostConstruct;
+import org.springframework.beans.factory.annotation.Value;
 
 @Component
 public class JwtUtil {
 
-    private final String secret = "this-is-a-very-long-secret-key-for-jwt-signing-that-must-be-at-least-256-bits";
-    private final SecretKey key = Keys.hmacShaKeyFor(secret.getBytes());
+    @Value("${jobflow.jwt.secret:default-secret-key-that-must-be-changed-in-production-environments-at-least-256-bits}")
+    private String secret;
+
+    @Value("${jobflow.jwt.expiration-ms:36000000}")
+    private long expirationMs;
+
+    private SecretKey key;
+
+    @PostConstruct
+    public void init() {
+        this.key = Keys.hmacShaKeyFor(secret.getBytes());
+    }
 
     public String generateToken(String username, String role) {
         Map<String, Object> claims = new HashMap<>();
@@ -27,7 +39,7 @@ public class JwtUtil {
                 .claims(claims)
                 .subject(subject)
                 .issuedAt(new Date(System.currentTimeMillis()))
-                .expiration(new Date(System.currentTimeMillis() + 1000 * 60 * 60 * 10))
+                .expiration(new Date(System.currentTimeMillis() + expirationMs))
                 .signWith(key)
                 .compact();
     }

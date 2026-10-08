@@ -20,7 +20,10 @@ import java.io.IOException;
 public class JwtFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
-    private final UserDetailsService userDetailsService;
+    
+    @org.springframework.beans.factory.annotation.Autowired
+    @org.springframework.context.annotation.Lazy
+    private UserDetailsService userDetailsService;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
@@ -35,8 +38,14 @@ public class JwtFilter extends OncePerRequestFilter {
             jwt = authorizationHeader.substring(7);
             try {
                 username = jwtUtil.extractUsername(jwt);
+            } catch (io.jsonwebtoken.ExpiredJwtException e) {
+                logger.warn("JWT is expired: " + e.getMessage());
+                response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Token expired");
+                return;
             } catch (Exception e) {
-                // Invalid token
+                logger.warn("Invalid JWT: " + e.getMessage());
+                response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid token");
+                return;
             }
         }
 

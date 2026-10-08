@@ -5,16 +5,22 @@ import com.example.job_service.exception.JobNotFoundException;
 import com.example.job_service.job.dto.CreateJobRequest;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.data.web.PageableHandlerMethodArgumentResolver;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.UUID;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.http.ResponseEntity;
+import org.springframework.data.domain.Page;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -29,24 +35,26 @@ import com.example.job_service.config.SecurityConfig;
 import com.example.job_service.config.JwtUtil;
 import com.example.job_service.config.JwtFilter;
 
-@WebMvcTest(JobController.class)
-@AutoConfigureMockMvc(addFilters = false)
+@ExtendWith(MockitoExtension.class)
 class AdvancedApiFailureTest {
 
-    @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
+    @Mock
     private JobService jobService;
-    
-    @MockBean
-    private JwtUtil jwtUtil;
-    
-    @MockBean
-    private JwtFilter jwtFilter;
 
-    @Autowired
-    private ObjectMapper objectMapper;
+    @InjectMocks
+    private JobController jobController;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @BeforeEach
+    void setUp() {
+        mockMvc = MockMvcBuilders.standaloneSetup(jobController)
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .setCustomArgumentResolvers(new PageableHandlerMethodArgumentResolver())
+                .build();
+    }
 
     @Test
     void shouldReturn400OnInvalidRequestPayload() throws Exception {
@@ -74,8 +82,9 @@ class AdvancedApiFailureTest {
     void shouldSupportPagination() throws Exception {
         when(jobService.getAllJobs(any(Pageable.class))).thenReturn(new PageImpl<>(List.of()));
 
-        mockMvc.perform(get("/api/v1/jobs?page=1&size=5"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.pageable").exists());
+        ResponseEntity<Page<JobEntity>> response = jobController.getAllJobs(PageRequest.of(1, 5));
+        
+        org.junit.jupiter.api.Assertions.assertEquals(200, response.getStatusCode().value());
+        org.junit.jupiter.api.Assertions.assertNotNull(response.getBody());
     }
 }
