@@ -21,7 +21,7 @@ public class ScheduledRetryPublisher {
     @Scheduled(fixedDelayString = "${retry.poll.delay:2000}")
     @Transactional
     public void publishDueRetries() {
-        List<ScheduledRetryEntity> dueRetries = repository.findByExecuteAtBefore(LocalDateTime.now());
+        List<ScheduledRetryEntity> dueRetries = repository.findAndLockNextRetries(LocalDateTime.now(), 100);
         if (!dueRetries.isEmpty()) {
             log.info("Found {} durable retries to execute", dueRetries.size());
             for (ScheduledRetryEntity retry : dueRetries) {

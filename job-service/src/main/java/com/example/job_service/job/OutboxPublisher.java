@@ -22,7 +22,7 @@ public class OutboxPublisher {
     @Scheduled(fixedDelayString = "${outbox.poll.delay:2000}")
     @Transactional
     public void publishOutboxEvents() {
-        List<OutboxEventEntity> events = outboxEventRepository.findAll();
+        List<OutboxEventEntity> events = outboxEventRepository.findAndLockNextEvents(100);
         if (!events.isEmpty()) {
             log.info("Found {} outbox events to publish", events.size());
             for (OutboxEventEntity entity : events) {

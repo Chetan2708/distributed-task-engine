@@ -8,6 +8,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
+import org.apache.kafka.clients.admin.NewTopic;
+import org.springframework.kafka.config.TopicBuilder;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -24,7 +26,26 @@ public class KafkaConfig {
         configProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         configProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         configProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        configProps.put(ProducerConfig.ACKS_CONFIG, "all");
         return new DefaultKafkaProducerFactory<>(configProps);
+    }
+
+    @Bean
+    public NewTopic jobEventsTopic() {
+        return TopicBuilder.name("job-events")
+                .partitions(3)
+                .replicas(3)
+                .config("min.insync.replicas", "2")
+                .build();
+    }
+
+    @Bean
+    public NewTopic jobDlqTopic() {
+        return TopicBuilder.name("job-dlq")
+                .partitions(3)
+                .replicas(3)
+                .config("min.insync.replicas", "2")
+                .build();
     }
 
     @Bean

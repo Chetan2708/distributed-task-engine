@@ -165,12 +165,12 @@ public class KafkaJobConsumer {
                     job.transitionTo(JobStatus.FAILED);
                     job.setErrorMessage(e.getMessage());
                     try {
+                        kafkaTemplate.send("job-dlq", gson.toJson(event)).join();
                         jobRepository.save(job);
-                    } catch (org.springframework.orm.ObjectOptimisticLockingFailureException oolfe) {
-                        log.warn("Failed to save FAILED state due to optimistic locking. Job {}", job.getId());
+                    } catch (Exception ex) {
+                        log.error("Failed to publish to DLQ or save FAILED state for job {}", job.getId(), ex);
+                        throw new RuntimeException("DLQ publish failed", ex);
                     }
-                    
-                    kafkaTemplate.send("job-dlq", gson.toJson(event));
                 }
             }
         } finally {

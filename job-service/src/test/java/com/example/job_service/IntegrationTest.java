@@ -39,7 +39,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
     "spring.datasource.password=",
     "spring.jpa.hibernate.ddl-auto=update",
     "spring.flyway.enabled=false",
-    "outbox.poll.delay=500"
+    "outbox.poll.delay=500",
+    "spring.main.allow-bean-definition-overriding=true"
 })
 @EmbeddedKafka(partitions = 1, topics = { "job-events" })
 public class IntegrationTest {
