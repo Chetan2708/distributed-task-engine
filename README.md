@@ -59,7 +59,7 @@ graph TD
 - **Message Broker**: Apache Kafka 3.7 (Event streaming)
 - **Distributed Cache**: Redis 7 (Distributed locking)
 - **Frontend**: React 18, Vite, Lucide Icons
-- **Infrastructure**: Docker & Docker Compose
+- **Infrastructure**: Docker & Docker Compose (Note: This repository provides a distributed worker/Kafka topology for portfolio demonstration. For true production high availability, PostgreSQL and Redis would require managed cluster deployments.)
 
 ## 📡 API Documentation
 
@@ -88,10 +88,10 @@ graph TD
 Kafka acts as the central nervous system. By using Consumer Groups, JobFlow naturally load balances tasks across the worker cluster. If a worker goes down, Kafka automatically rebalances the partition to healthy nodes.
 
 ### 2. Exponential Backoff Retry Strategy & Durable Retry Outbox
-If a job throws an exception, the worker catches it and calculates an exponential backoff (1s -> 2s -> 4s). However, rather than scheduling the retry in volatile JVM memory (which would be lost if the worker crashed), it writes a `scheduled_retries` entry into PostgreSQL transactionally alongside the job's `ERROR` state. A background `ScheduledRetryPublisher` sweeps the database and reliably pushes due retries back to the Kafka topic. This prevents hammering failing third-party APIs while guaranteeing that no retries are ever dropped due to process failure.
+If a job throws an exception, the worker catches it and calculates an exponential backoff (1s -> 2s -> 4s). However, rather than scheduling the retry in volatile JVM memory (which would be lost if the worker crashed), it writes a `scheduled_retries` entry into PostgreSQL transactionally alongside the job's `ERROR` state. A background `ScheduledRetryPublisher` sweeps the database and reliably pushes due retries back to the Kafka topic. This prevents hammering failing third-party APIs while persisting retry schedules in PostgreSQL so retries survive worker process failures.
 
 ### 3. State Idempotency
-Because Kafka guarantees at-least-once delivery, duplicates can occur. We enforce *state idempotency* by leveraging JPA Optimistic Locking (`@Version`) on the job state and atomic state transitions in PostgreSQL. If a duplicate message or concurrent worker attempts to process the same job ID, the database state transition safely bounces duplicate executions and prevents race conditions. This ensures the job state machine cannot progress identically twice. *(Note: While this protects the internal job state, true business-operation idempotency would require passing a unique idempotency key to downstream external services.)*
+Because Kafka guarantees at-least-once delivery, duplicates can occur. We enforce *state idempotency* by leveraging JPA Optimistic Locking (`@Version`) on the job state and atomic state transitions in PostgreSQL. Optimistic locking and terminal-state checks prevent duplicate job state progression when multiple workers receive the same job. *(Note: While this protects the internal job state, true business-operation idempotency would require passing a unique idempotency key to downstream external services.)*
 
 ### 4. Redis Distributed Locking (Redisson)
 To prevent edge cases where two workers might receive identical events simultaneously, workers must acquire a distributed lock before processing. We use **Redisson** for this, which provides a mature locking abstraction (`RLock`). Redisson automatically manages lease renewals (the "watchdog" pattern) for long-running jobs and safely ties the lock to the specific worker thread. If a lock is currently held by another node (e.g. during a partition rebalance), the worker will safely wait to acquire it before proceeding, guaranteeing that duplicate messages do not cause race conditions or premature offset commits.
