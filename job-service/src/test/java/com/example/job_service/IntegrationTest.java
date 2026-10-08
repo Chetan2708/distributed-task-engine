@@ -40,7 +40,12 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
     "spring.jpa.hibernate.ddl-auto=update",
     "spring.flyway.enabled=false",
     "outbox.poll.delay=500",
-    "spring.main.allow-bean-definition-overriding=true"
+    "spring.main.allow-bean-definition-overriding=true",
+    "jobflow.jwt.secret=test-secret-key-that-is-at-least-256-bits-long",
+    "jobflow.auth.user.username=user",
+    "jobflow.auth.user.password=password",
+    "jobflow.auth.admin.username=admin",
+    "jobflow.auth.admin.password=admin"
 })
 @EmbeddedKafka(partitions = 1, topics = { "job-events" })
 public class IntegrationTest {

@@ -116,6 +116,11 @@ services:
     ports:
       - "8080:8080"
     environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - JOBFLOW_AUTH_USER_PASSWORD=${JOBFLOW_AUTH_USER_PASSWORD}
+      - JOBFLOW_AUTH_ADMIN_PASSWORD=${JOBFLOW_AUTH_ADMIN_PASSWORD}
+      - JOBFLOW_JWT_SECRET=${JOBFLOW_JWT_SECRET}
+      - JOBFLOW_JWT_EXPIRATION_MS=${JOBFLOW_JWT_EXPIRATION_MS:-36000000}
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/jobflow
       - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD:-jobflow_password}
       - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka1:29092,kafka2:29092,kafka3:29092
@@ -138,6 +143,7 @@ services:
     build:
       context: ./job-worker
     environment:
+      - SPRING_PROFILES_ACTIVE=prod
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/jobflow
       - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD:-jobflow_password}
       - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka1:29092,kafka2:29092,kafka3:29092

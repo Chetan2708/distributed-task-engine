@@ -108,6 +108,9 @@ The worker engine employs the **Strategy Pattern** via a flexible `JobHandler` i
 ### 8. Synchronous Offsets & Consumer Concurrency
 To guarantee zero message loss, the worker processes each task synchronously within the `KafkaListener` thread. This prevents Spring Kafka from committing the consumer offset until the task is definitively completed or securely scheduled for a durable retry. We achieve high throughput and horizontal scalability by running multiple worker replicas and increasing the Kafka topic's partition count, allowing the consumer group to naturally balance the load across the cluster.
 
+### 9. Long-Running Jobs & Consumer Stability
+Because Kafka requires consumers to poll periodically, long-running jobs (e.g., executing for 20+ minutes) can trigger a consumer rebalance if they exceed the maximum poll interval. JobFlow explicitly configures `max.poll.interval.ms` to 1 hour (3,600,000 ms) to support expected maximum processing durations without creating unnecessary consumer-group instability.
+
 ## 🚀 How to Run
 
 JobFlow is packaged for zero-configuration startup using Docker Compose.

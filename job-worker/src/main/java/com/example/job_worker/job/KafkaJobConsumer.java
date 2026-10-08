@@ -56,15 +56,30 @@ public class KafkaJobConsumer {
         JobEvent event;
         try {
             event = gson.fromJson(message, JobEvent.class);
+            if (event == null || event.getType() == null || event.getJobId() == null) {
+                throw new IllegalArgumentException("Message missing required fields");
+            }
         } catch (Exception e) {
-            log.error("Failed to parse Kafka message: {}", message, e);
+            log.error("Failed to parse Kafka message: {}. Sending to job-events-invalid", message, e);
+            try {
+                kafkaTemplate.send("job-events-invalid", message).join();
+            } catch (Exception ex) {
+                log.error("Failed to publish to job-events-invalid", ex);
+                throw new RuntimeException("DLQ publish failed", ex);
+            }
             return;
         }
         log.info("Worker received event from Kafka: {}", event);
 
         JobHandler handler = handlers.get(event.getType());
         if (handler == null) {
-            log.error("No handler configured for job type: {}. Skipping.", event.getType());
+            log.error("No handler configured for job type: {}. Sending to DLQ.", event.getType());
+            try {
+                kafkaTemplate.send("job-events-dlq", message).join();
+            } catch (Exception ex) {
+                log.error("Failed to publish unknown event to DLQ", ex);
+                throw new RuntimeException("DLQ publish failed", ex);
+            }
             return;
         }
 

@@ -29,16 +29,16 @@ public class SecurityConfig {
 
     private final JwtFilter jwtFilter;
 
-    @Value("${jobflow.auth.user.username:user}")
+    @Value("${jobflow.auth.user.username}")
     private String userUsername;
 
-    @Value("${jobflow.auth.user.password:password}")
+    @Value("${jobflow.auth.user.password}")
     private String userPassword;
 
-    @Value("${jobflow.auth.admin.username:admin}")
+    @Value("${jobflow.auth.admin.username}")
     private String adminUsername;
 
-    @Value("${jobflow.auth.admin.password:admin}")
+    @Value("${jobflow.auth.admin.password}")
     private String adminPassword;
 
     @Value("${app.frontend.url:http://localhost:5173}")

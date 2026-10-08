@@ -15,7 +15,7 @@ import org.springframework.beans.factory.annotation.Value;
 @Component
 public class JwtUtil {
 
-    @Value("${jobflow.jwt.secret:default-secret-key-that-must-be-changed-in-production-environments-at-least-256-bits}")
+    @Value("${jobflow.jwt.secret}")
     private String secret;
 
     @Value("${jobflow.jwt.expiration-ms:36000000}")
