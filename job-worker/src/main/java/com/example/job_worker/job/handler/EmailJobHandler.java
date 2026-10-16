@@ -22,6 +22,6 @@ public class EmailJobHandler implements JobHandler {
             Thread.currentThread().interrupt();
             return new JobResult(false, "Email dispatch interrupted");
         }
-        return new JobResult(true, "Email sent successfully");
+        return new JobResult(true, "[Simulated] Email dispatched — 1.5s network latency simulated");
     }
 }

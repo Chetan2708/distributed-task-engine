@@ -24,6 +24,23 @@ spring:
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
       acks: all
 
+jobflow:
+  auth:
+    user:
+      username: ${JOBFLOW_AUTH_USER_USERNAME:user}
+      password: ${JOBFLOW_AUTH_USER_PASSWORD:changeme}
+    admin:
+      username: ${JOBFLOW_AUTH_ADMIN_USERNAME:admin}
+      password: ${JOBFLOW_AUTH_ADMIN_PASSWORD:changeme}
+  jwt:
+    secret: ${JOBFLOW_JWT_SECRET:default-dev-secret-key-that-is-at-least-256-bits-long-for-hmac-sha}
+    expiration-ms: ${JOBFLOW_JWT_EXPIRATION_MS:36000000}
+  kafka:
+    replication-factor: 1
+    min-insync-replicas: "1"
+app:
+  frontend:
+    url: ${APP_FRONTEND_URL:http://localhost:5173}
 management:
   endpoint:
     health:

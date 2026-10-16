@@ -20,6 +20,12 @@ public class KafkaConfig {
     @Value("${spring.kafka.bootstrap-servers:localhost:9092}")
     private String bootstrapServers;
 
+    @Value("${jobflow.kafka.replication-factor:1}")
+    private int replicationFactor;
+
+    @Value("${jobflow.kafka.min-insync-replicas:1}")
+    private String minInsyncReplicas;
+
     @Bean
     public ProducerFactory<String, String> producerFactory() {
         Map<String, Object> configProps = new HashMap<>();
@@ -34,8 +40,8 @@ public class KafkaConfig {
     public NewTopic jobEventsTopic() {
         return TopicBuilder.name("job-events")
                 .partitions(3)
-                .replicas(3)
-                .config("min.insync.replicas", "2")
+                .replicas(replicationFactor)
+                .config("min.insync.replicas", minInsyncReplicas)
                 .build();
     }
 
@@ -43,8 +49,8 @@ public class KafkaConfig {
     public NewTopic jobDlqTopic() {
         return TopicBuilder.name("job-dlq")
                 .partitions(3)
-                .replicas(3)
-                .config("min.insync.replicas", "2")
+                .replicas(replicationFactor)
+                .config("min.insync.replicas", minInsyncReplicas)
                 .build();
     }
 

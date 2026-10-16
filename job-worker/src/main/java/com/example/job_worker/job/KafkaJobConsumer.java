@@ -123,13 +123,16 @@ public class KafkaJobConsumer {
             JobResult result = handler.execute(job);
 
             if (job.getPayload() != null && job.getPayload().containsKey("fail_attempts")) {
-                int failAttempts = ((Double) job.getPayload().get("fail_attempts")).intValue();
+                int failAttempts = ((Number) job.getPayload().get("fail_attempts")).intValue();
                 if (job.getRetryCount() < failAttempts) {
                     throw new RuntimeException("Intentional failure on attempt " + (job.getRetryCount() + 1));
                 }
             }
 
             if (result.isSuccess()) {
+                if (result.getData() != null) {
+                    job.setResult(result.getData());
+                }
                 job.transitionTo(JobStatus.SUCCESS);
                 jobRepository.save(job);
                 log.info("Job {} completed successfully: {}", job.getId(), result.getMessage());

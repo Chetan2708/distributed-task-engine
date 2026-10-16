@@ -22,6 +22,6 @@ public class PdfJobHandler implements JobHandler {
             Thread.currentThread().interrupt();
             return new JobResult(false, "PDF generation interrupted");
         }
-        return new JobResult(true, "PDF generated successfully");
+        return new JobResult(true, "[Simulated] PDF invoice generated — 3s processing simulated");
     }
 }

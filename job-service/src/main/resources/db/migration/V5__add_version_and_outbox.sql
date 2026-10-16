@@ -1,0 +1,8 @@
+ALTER TABLE jobs ADD COLUMN version BIGINT DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS outbox_events (
+    id UUID PRIMARY KEY,
+    aggregate_id VARCHAR(255),
+    payload JSONB,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

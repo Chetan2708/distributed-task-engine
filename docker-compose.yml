@@ -149,6 +149,8 @@ services:
       - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka1:29092,kafka2:29092,kafka3:29092
       - SPRING_REDIS_HOST=redis
     depends_on:
+      job-service:
+        condition: service_started
       postgres:
         condition: service_healthy
       kafka1:

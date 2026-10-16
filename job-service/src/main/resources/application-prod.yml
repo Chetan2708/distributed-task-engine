@@ -4,3 +4,8 @@ spring:
     properties:
       hibernate:
         format_sql: false
+
+jobflow:
+  kafka:
+    replication-factor: 3
+    min-insync-replicas: "2"
