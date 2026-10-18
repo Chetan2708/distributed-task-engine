@@ -91,6 +91,10 @@ stateDiagram-v2
     FAILED --> [*]: Sent to DLQ
 ```
 
+
+<img width="1131" height="673" alt="image" src="https://github.com/user-attachments/assets/66e18587-b2cb-4411-a628-f5f68a53c89f" />
+
+
 ## 🛠️ Tech Stack
 - **Backend**: Java 25, Spring Boot 4.1.1
 - **Database**: PostgreSQL 15 (State, Idempotency & Outbox)
