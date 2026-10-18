@@ -12,7 +12,8 @@ public enum JobStatus {
         return switch (this) {
             case CREATED, ERROR -> newStatus == QUEUED || newStatus == PROCESSING;
             case QUEUED -> newStatus == PROCESSING;
-            case PROCESSING -> newStatus == PROCESSING || newStatus == SUCCESS || newStatus == FAILED || newStatus == ERROR;
+            case PROCESSING ->
+                newStatus == PROCESSING || newStatus == SUCCESS || newStatus == FAILED || newStatus == ERROR;
             case SUCCESS, FAILED -> false;
         };
     }

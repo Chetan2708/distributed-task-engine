@@ -10,6 +10,10 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -72,15 +76,24 @@ class JobServiceTest {
         UUID jobId = UUID.randomUUID();
         JobEntity job = new JobEntity();
         job.setId(jobId);
+        job.setUserId("user1");
         
         when(jobRepository.findById(jobId)).thenReturn(Optional.of(job));
 
-        // Act
-        JobEntity result = jobService.getJob(jobId);
+        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
+                "user1", null, Collections.emptyList());
+        SecurityContextHolder.getContext().setAuthentication(auth);
 
-        // Assert
-        assertNotNull(result);
-        assertEquals(jobId, result.getId());
+        try {
+            // Act
+            JobEntity result = jobService.getJob(jobId);
+
+            // Assert
+            assertNotNull(result);
+            assertEquals(jobId, result.getId());
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
     }
 
     @Test

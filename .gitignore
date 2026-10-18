@@ -13,3 +13,6 @@
 # OS generated
 .DS_Store
 Thumbs.db
+
+# Architecture tools
+.archify/

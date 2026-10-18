@@ -29,23 +29,23 @@ public class KafkaJobConsumer {
     private final RedissonClient redissonClient;
     private final TransactionTemplate transactionTemplate;
     private final com.google.gson.Gson gson = new com.google.gson.Gson();
-    
+
     private final Map<String, JobHandler> handlers = new HashMap<>();
 
     public KafkaJobConsumer(JobRepository jobRepository,
-                            ProcessedMessageRepository processedMessageRepository,
-                            ScheduledRetryRepository scheduledRetryRepository,
-                            KafkaTemplate<String, String> kafkaTemplate,
-                            RedissonClient redissonClient,
-                            TransactionTemplate transactionTemplate,
-                            List<JobHandler> jobHandlers) {
+            ProcessedMessageRepository processedMessageRepository,
+            ScheduledRetryRepository scheduledRetryRepository,
+            KafkaTemplate<String, String> kafkaTemplate,
+            RedissonClient redissonClient,
+            TransactionTemplate transactionTemplate,
+            List<JobHandler> jobHandlers) {
         this.jobRepository = jobRepository;
         this.processedMessageRepository = processedMessageRepository;
         this.scheduledRetryRepository = scheduledRetryRepository;
         this.kafkaTemplate = kafkaTemplate;
         this.redissonClient = redissonClient;
         this.transactionTemplate = transactionTemplate;
-        
+
         for (JobHandler handler : jobHandlers) {
             this.handlers.put(handler.type(), handler);
         }
@@ -83,7 +83,7 @@ public class KafkaJobConsumer {
             return;
         }
 
-        // Process synchronously to ensure Kafka offset is only committed 
+        // Process synchronously to ensure Kafka offset is only committed
         // AFTER the job has safely executed or a durable retry is scheduled.
         processJob(event, handler);
     }
@@ -91,7 +91,7 @@ public class KafkaJobConsumer {
     private void processJob(JobEvent event, JobHandler handler) {
         String lockKey = "lock:job:" + event.getJobId();
         RLock lock = redissonClient.getLock(lockKey);
-        
+
         // Wait for the lock if another worker is processing (e.g. during a rebalance)
         // This ensures we don't skip the message and prematurely commit the offset.
         lock.lock();
@@ -151,35 +151,47 @@ public class KafkaJobConsumer {
 
         } catch (Exception e) {
             log.error("Failed to process job {}: {}", event.getJobId(), e.getMessage());
-            
+
             if (job != null) {
                 job.setRetryCount(job.getRetryCount() + 1);
                 if (job.getRetryCount() <= job.getMaxRetries()) {
                     long delaySeconds = (long) Math.pow(2, job.getRetryCount() - 1);
-                    log.warn("Job {} failed, marking as ERROR and scheduling durable retry... (Attempt {} of {}). Waiting {} seconds.", 
+                    log.warn(
+                            "Job {} failed, marking as ERROR and scheduling durable retry... (Attempt {} of {}). Waiting {} seconds.",
                             job.getId(), job.getRetryCount(), job.getMaxRetries(), delaySeconds);
-                    
+
                     job.transitionTo(JobStatus.ERROR);
                     job.setErrorMessage(e.getMessage());
-                    
+
                     JobEvent retryEvent = new JobEvent(UUID.randomUUID(), event.getJobId(), event.getType());
                     final JobEntity finalJob = job;
-                    
+
                     try {
                         transactionTemplate.executeWithoutResult(status -> {
                             jobRepository.save(finalJob);
+
                             ScheduledRetryEntity retry = new ScheduledRetryEntity();
                             retry.setTopic("job-events");
                             retry.setPayload(gson.toJson(retryEvent));
-                            retry.setExecuteAt(LocalDateTime.now().plusSeconds(delaySeconds));
+                            retry.setExecuteAt(
+                                    LocalDateTime.now().plusSeconds(delaySeconds));
+
                             scheduledRetryRepository.save(retry);
                         });
-                    } catch (org.springframework.orm.ObjectOptimisticLockingFailureException oolfe) {
-                        log.warn("Failed to save ERROR state due to optimistic locking. Job {}", job.getId());
+                    } catch (Exception retryPersistenceFailure) {
+                        log.error(
+                                "Could not persist retry for job {}",
+                                event.getJobId(),
+                                retryPersistenceFailure);
+
+                        throw new IllegalStateException(
+                                "Retry persistence failed; Kafka message must not be acknowledged",
+                                retryPersistenceFailure);
                     }
-                    
+
                 } else {
-                    log.error("Job {} failed permanently after {} attempts. Sending to DLQ.", job.getId(), job.getRetryCount());
+                    log.error("Job {} failed permanently after {} attempts. Sending to DLQ.", job.getId(),
+                            job.getRetryCount());
                     job.transitionTo(JobStatus.FAILED);
                     job.setErrorMessage(e.getMessage());
                     try {

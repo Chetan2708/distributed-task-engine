@@ -3,7 +3,11 @@ spring:
     name: job-worker
   profiles:
     active: dev
-    
+
+  threads:
+    virtual:
+      enabled: true
+
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/jobflow}
     username: jobflow_user

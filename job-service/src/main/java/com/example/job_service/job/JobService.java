@@ -13,6 +13,8 @@ import java.util.UUID;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -29,45 +31,54 @@ public class JobService {
         JobEntity job = new JobEntity();
         job.setType(request.getType());
         job.setPayload(request.getPayload());
-        
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth != null && auth.getName() != null && !auth.getName().equals("anonymousUser")) {
+
+        if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getName())) {
             job.setUserId(auth.getName());
         }
-        
+
         if (request.getPriority() != null) {
             job.setPriority(request.getPriority());
         }
+
         if (request.getMaxRetries() != null) {
             job.setMaxRetries(request.getMaxRetries());
         }
-        
+
+        job.transitionTo(JobStatus.QUEUED);
+
         JobEntity savedJob = jobRepository.save(job);
-        
+
         // Save event to Outbox (Transactional Outbox Pattern)
         OutboxEventEntity outboxEvent = new OutboxEventEntity();
         outboxEvent.setAggregateId(savedJob.getId().toString());
-        com.example.job_service.job.dto.JobEvent event = new com.example.job_service.job.dto.JobEvent(UUID.randomUUID(), savedJob.getId(), savedJob.getType());
+        com.example.job_service.job.dto.JobEvent event = new com.example.job_service.job.dto.JobEvent(UUID.randomUUID(),
+                savedJob.getId(), savedJob.getType());
         outboxEvent.setPayload(gson.toJson(event));
         outboxEventRepository.save(outboxEvent);
-        
+
         return savedJob;
     }
 
     public JobEntity getJob(UUID id) {
-        JobEntity job = jobRepository.findById(id).orElseThrow(() -> new JobNotFoundException(id));
-        
+        JobEntity job = jobRepository.findById(id)
+                .orElseThrow(() -> new JobNotFoundException(id));
+
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth != null && auth.getName() != null && !auth.getName().equals("anonymousUser")) {
-            String username = auth.getName();
-            boolean isAdmin = auth.getAuthorities().stream()
-                    .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
-                    
-            if (!isAdmin && job.getUserId() != null && !job.getUserId().equals(username)) {
-                throw new JobNotFoundException(id);
-            }
+
+        if (auth == null || !auth.isAuthenticated()
+                || "anonymousUser".equals(auth.getName())) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Authentication required");
         }
-        
+
+        boolean isAdmin = auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+
+        if (!isAdmin && !auth.getName().equals(job.getUserId())) {
+            throw new JobNotFoundException(id);
+        }
+
         return job;
     }
 
@@ -75,7 +86,7 @@ public class JobService {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         boolean isAdmin = false;
         String username = null;
-        
+
         if (auth != null) {
             username = auth.getName();
             for (GrantedAuthority authority : auth.getAuthorities()) {
@@ -85,7 +96,7 @@ public class JobService {
                 }
             }
         }
-        
+
         if (isAdmin || username == null || username.equals("anonymousUser")) {
             return jobRepository.findAll(pageable);
         } else {
@@ -93,34 +104,53 @@ public class JobService {
         }
     }
 
-
-
+    @PreAuthorize("hasRole('ADMIN')")
     public Map<String, Long> getStats() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated() && !auth.getName().equals("anonymousUser")) {
+            boolean isAdmin = auth.getAuthorities().stream()
+                    .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+            if (!isAdmin) {
+                throw new AccessDeniedException("Access denied: ADMIN role required to view stats");
+            }
+        }
+
         Map<String, Long> stats = new HashMap<>();
         stats.put("total", jobRepository.count());
-        
+
         List<Object[]> statusCounts = jobRepository.countJobsByStatus();
         for (Object[] row : statusCounts) {
             JobStatus status = (JobStatus) row[0];
             Long count = (Long) row[1];
-            
+
             switch (status) {
-                case QUEUED: stats.put("queued", count); break;
-                case PROCESSING: stats.put("processing", count); break;
-                case SUCCESS: stats.put("successful", count); break;
-                case ERROR: stats.put("failed", count); break;
-                case FAILED: stats.put("dlq", count); break;
-                default: break;
+                case QUEUED:
+                    stats.put("queued", count);
+                    break;
+                case PROCESSING:
+                    stats.put("processing", count);
+                    break;
+                case SUCCESS:
+                    stats.put("successful", count);
+                    break;
+                case ERROR:
+                    stats.put("failed", count);
+                    break;
+                case FAILED:
+                    stats.put("dlq", count);
+                    break;
+                default:
+                    break;
             }
         }
-        
+
         // Ensure keys exist even if count is 0
         stats.putIfAbsent("queued", 0L);
         stats.putIfAbsent("processing", 0L);
         stats.putIfAbsent("successful", 0L);
         stats.putIfAbsent("failed", 0L);
         stats.putIfAbsent("dlq", 0L);
-        
+
         return stats;
     }
 }

@@ -99,7 +99,7 @@ public class IntegrationTest {
         // 3. Verify Database State
         JobEntity savedJob = jobRepository.findById(jobId).orElseThrow();
         assertNotNull(savedJob);
-        assertEquals(JobStatus.CREATED, savedJob.getStatus());
+        assertEquals(JobStatus.QUEUED, savedJob.getStatus());
         assertEquals("INTEGRATION_TEST", savedJob.getType());
 
         // 4. Verify Kafka Event
