@@ -184,9 +184,6 @@ export default function Jobs({ onOpenCreateJob }) {
                     </td>
                     <td>
                       <span className="type-tag">
-                        {job.type === 'REPORT' && '📊 '}
-                        {job.type === 'PDF_GENERATION' && '📄 '}
-                        {job.type === 'EMAIL' && '✉️ '}
                         {job.type}
                       </span>
                     </td>

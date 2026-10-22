@@ -45,6 +45,18 @@ public class JobService {
             job.setMaxRetries(request.getMaxRetries());
         }
 
+        String callbackUrl = request.getCallbackUrl();
+        if ((callbackUrl == null || callbackUrl.isBlank()) && request.getPayload() != null) {
+            if (request.getPayload().get("callbackUrl") != null) {
+                callbackUrl = String.valueOf(request.getPayload().get("callbackUrl"));
+            } else if (request.getPayload().get("callback_url") != null) {
+                callbackUrl = String.valueOf(request.getPayload().get("callback_url"));
+            }
+        }
+        if (callbackUrl != null && !callbackUrl.isBlank()) {
+            job.setCallbackUrl(callbackUrl.trim());
+        }
+
         job.transitionTo(JobStatus.QUEUED);
 
         JobEntity savedJob = jobRepository.save(job);

@@ -65,6 +65,9 @@ public class JobEntity {
     @Column(name = "error_message")
     private String errorMessage;
 
+    @Column(name = "callback_url", length = 1024)
+    private String callbackUrl;
+
     @PrePersist
     public void prePersist() {
         if (createdAt == null) {

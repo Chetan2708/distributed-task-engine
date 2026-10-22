@@ -1,0 +1,23 @@
+# Caddy Reverse Proxy Configuration with Automatic HTTPS
+# Set DOMAIN environment variable (e.g. DOMAIN=jobflow.yourdomain.com) or default to localhost
+
+{$DOMAIN:localhost} {
+    # Reverse proxy Spring Boot Job Service API
+    reverse_proxy /api/* job-service:8080
+    reverse_proxy /actuator/* job-service:8080
+
+    # Reverse proxy React Frontend SPA
+    reverse_proxy * frontend:80
+
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    # Enable gzip & zstd compression
+    encode gzip zstd
+}

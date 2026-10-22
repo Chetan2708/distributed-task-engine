@@ -62,6 +62,9 @@ public class JobEntity {
     @Column(name = "error_message")
     private String errorMessage;
 
+    @Column(name = "callback_url", length = 1024)
+    private String callbackUrl;
+
     public void transitionTo(JobStatus newStatus) {
         if (!this.status.canTransitionTo(newStatus)) {
             throw new IllegalStateException("Invalid state transition from " + this.status + " to " + newStatus);

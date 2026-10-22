@@ -21,4 +21,6 @@ public class CreateJobRequest {
     @Min(value = 0, message = "Max retries must be at least 0")
     @Max(value = 10, message = "Max retries cannot exceed 10")
     private Integer maxRetries;
+
+    private String callbackUrl;
 }

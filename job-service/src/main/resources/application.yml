@@ -32,6 +32,8 @@ jobflow:
     admin:
       username: ${JOBFLOW_AUTH_ADMIN_USERNAME:admin}
       password: ${JOBFLOW_AUTH_ADMIN_PASSWORD:changeme}
+    api-key: ${JOBFLOW_M2M_API_KEY:jobflow_live_secret_key_12345}
+    api-key-client: ${JOBFLOW_M2M_CLIENT_NAME:m2m-service}
   jwt:
     secret: ${JOBFLOW_JWT_SECRET:default-dev-secret-key-that-is-at-least-256-bits-long-for-hmac-sha}
     expiration-ms: ${JOBFLOW_JWT_EXPIRATION_MS:36000000}

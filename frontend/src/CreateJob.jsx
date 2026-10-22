@@ -1,59 +1,16 @@
 import { useState } from 'react';
 import {
   X,
-  BarChart3,
-  FileText,
-  Mail,
   Zap,
   Flame,
   Bug,
   ChevronDown,
   ChevronUp,
   Loader2,
-  Sparkles
+  Sparkles,
+  Code2
 } from 'lucide-react';
 import { postWithAuth } from './api';
-
-const JOB_TYPES = [
-  {
-    id: 'REPORT',
-    label: 'System Report',
-    icon: BarChart3,
-    badge: '✨ Real Analytics',
-    badgeClass: 'badge-real',
-    desc: 'Aggregates actual PostgreSQL DB metrics (counts, latencies, success rates)',
-    defaultPayload: {
-      reportTitle: 'System Health & Performance Audit',
-      includeDetails: true,
-    },
-  },
-  {
-    id: 'PDF_GENERATION',
-    label: 'PDF Invoice',
-    icon: FileText,
-    badge: 'Simulated ~3s',
-    badgeClass: 'badge-simulated',
-    desc: 'Simulates document rendering with 3-second processing delay',
-    defaultPayload: {
-      customerName: 'Acme Global Corp',
-      invoiceId: `INV-${Math.floor(1000 + Math.random() * 9000)}`,
-      amount: 499.5,
-    },
-  },
-  {
-    id: 'EMAIL',
-    label: 'Email Dispatch',
-    icon: Mail,
-    badge: 'Simulated ~1.5s',
-    badgeClass: 'badge-simulated',
-    desc: 'Simulates transactional email dispatch via external SMTP gateway',
-    defaultPayload: {
-      recipientEmail: 'alex.smith@example.com',
-      subject: 'Transaction Receipt & Order Confirmation',
-      template: 'invoice_ready',
-    },
-  },
-];
 
 const PRIORITIES = [
   { label: 'Low', value: 0 },
@@ -62,19 +19,18 @@ const PRIORITIES = [
   { label: 'Critical', value: 10 },
 ];
 
+const DEFAULT_PAYLOAD = {
+  message: 'Hello from JobFlow Task Engine',
+  timestamp: new Date().toISOString()
+};
+
 export default function CreateJob({ isOpen, onClose, onJobCreated, showToast }) {
-  const [selectedType, setSelectedType] = useState('REPORT');
+  const [jobType, setJobType] = useState('TEST');
   const [priority, setPriority] = useState(3);
   const [maxRetries, setMaxRetries] = useState(3);
-
-  // Dynamic payload fields
-  const [reportTitle, setReportTitle] = useState('System Health & Performance Audit');
-  const [customerName, setCustomerName] = useState('Acme Global Corp');
-  const [invoiceId, setInvoiceId] = useState(`INV-${Math.floor(1000 + Math.random() * 9000)}`);
-  const [amount, setAmount] = useState(499.5);
-  const [recipientEmail, setRecipientEmail] = useState('alex.smith@example.com');
-  const [subject, setSubject] = useState('Transaction Receipt & Order Confirmation');
-  const [emailTemplate, setEmailTemplate] = useState('invoice_ready');
+  const [callbackUrl, setCallbackUrl] = useState('');
+  const [payloadText, setPayloadText] = useState(JSON.stringify(DEFAULT_PAYLOAD, null, 2));
+  const [jsonError, setJsonError] = useState(null);
 
   // Chaos engineering
   const [chaosExpanded, setChaosExpanded] = useState(false);
@@ -100,36 +56,29 @@ export default function CreateJob({ isOpen, onClose, onJobCreated, showToast }) 
     }
   };
 
-  const buildPayload = (type = selectedType) => {
-    let payload = {};
-    if (type === 'REPORT') {
-      payload = {
-        reportTitle: reportTitle || 'System Health & Performance Audit',
-        requestedBy: 'Console User',
-        timestamp: new Date().toISOString(),
-      };
-    } else if (type === 'PDF_GENERATION') {
-      payload = {
-        customerName: customerName || 'Acme Global Corp',
-        invoiceId: invoiceId || `INV-${Date.now()}`,
-        amount: Number(amount) || 100,
-        currency: 'USD',
-      };
-    } else if (type === 'EMAIL') {
-      payload = {
-        recipientEmail: recipientEmail || 'user@example.com',
-        subject: subject || 'Notification',
-        template: emailTemplate,
-      };
+  const parsePayload = () => {
+    try {
+      const parsed = JSON.parse(payloadText || '{}');
+      if (chaosMode === 'temp_failure') {
+        parsed.fail_attempts = 2;
+      } else if (chaosMode === 'dlq') {
+        parsed.fail_attempts = 5;
+      }
+      return parsed;
+    } catch (err) {
+      throw new Error(`Invalid JSON payload: ${err.message}`);
     }
+  };
 
-    if (chaosMode === 'temp_failure') {
-      payload.fail_attempts = 2;
-    } else if (chaosMode === 'dlq') {
-      payload.fail_attempts = 5;
+  const handlePayloadChange = (e) => {
+    const val = e.target.value;
+    setPayloadText(val);
+    try {
+      JSON.parse(val);
+      setJsonError(null);
+    } catch (err) {
+      setJsonError(err.message);
     }
-
-    return payload;
   };
 
   const handleSubmit = async (e) => {
@@ -137,12 +86,17 @@ export default function CreateJob({ isOpen, onClose, onJobCreated, showToast }) 
     setIsSubmitting(true);
 
     try {
-      const payload = buildPayload(selectedType);
+      if (!jobType.trim()) {
+        throw new Error('Job type is required');
+      }
+      const payload = parsePayload();
+
       const res = await postWithAuth('/jobs', {
-        type: selectedType,
+        type: jobType.trim().toUpperCase(),
         payload,
         priority: Number(priority),
         maxRetries: Number(maxRetries),
+        callbackUrl: callbackUrl.trim() || undefined,
       });
 
       if (!res.ok) {
@@ -154,7 +108,7 @@ export default function CreateJob({ isOpen, onClose, onJobCreated, showToast }) 
       showToast?.({
         type: 'success',
         title: 'Job Dispatched Successfully',
-        message: `Job #${data.jobId.slice(0, 8)}... queued for worker execution.`,
+        message: `Job #${data.jobId.slice(0, 8)}... (${jobType.toUpperCase()}) queued for execution.`,
         link: `/jobs/${data.jobId}`,
         linkText: 'Track Execution →',
       });
@@ -174,19 +128,22 @@ export default function CreateJob({ isOpen, onClose, onJobCreated, showToast }) 
 
   const handleBatchBlast = async () => {
     setIsBlasting(true);
-    const types = ['REPORT', 'PDF_GENERATION', 'EMAIL', 'REPORT', 'PDF_GENERATION'];
     const createdJobs = [];
     let successCount = 0;
+    const typeToUse = (jobType || 'TEST').trim().toUpperCase();
 
     try {
-      for (let i = 0; i < types.length; i++) {
-        const type = types[i];
-        const batchPayload = buildPayload(type);
-        batchPayload.batchIndex = i + 1;
-        batchPayload.batchId = `blast-${Date.now().toString(36)}`;
+      const basePayload = parsePayload();
+
+      for (let i = 0; i < 5; i++) {
+        const batchPayload = {
+          ...basePayload,
+          batchIndex: i + 1,
+          batchId: `blast-${Date.now().toString(36)}`,
+        };
 
         const res = await postWithAuth('/jobs', {
-          type,
+          type: typeToUse,
           payload: batchPayload,
           priority: (i * 2) % 10,
           maxRetries: 3,
@@ -202,7 +159,7 @@ export default function CreateJob({ isOpen, onClose, onJobCreated, showToast }) 
       showToast?.({
         type: 'success',
         title: '🚀 Batch Blast Complete!',
-        message: `Dispatched ${successCount} concurrent jobs across Kafka partitions.`,
+        message: `Dispatched ${successCount} concurrent '${typeToUse}' jobs across Kafka partitions.`,
         link: '/jobs',
         linkText: 'View in Jobs Stream →',
       });
@@ -229,13 +186,15 @@ export default function CreateJob({ isOpen, onClose, onJobCreated, showToast }) 
           <div className="panel-header-title">
             <Zap className="panel-header-icon" size={22} />
             <div>
-              <h3>Trigger New Job</h3>
-              <p className="panel-subtitle">Orchestrate asynchronous tasks with Kafka & Redis</p>
+              <h3>Dispatch Background Job</h3>
+              <span className="panel-subtitle">
+                Queue durable jobs to Kafka via Transactional Outbox
+              </span>
             </div>
           </div>
           <button
             type="button"
-            className="panel-close-btn"
+            className="btn-panel-close"
             onClick={onClose}
             aria-label="Close panel"
           >
@@ -244,126 +203,111 @@ export default function CreateJob({ isOpen, onClose, onJobCreated, showToast }) 
         </div>
 
         <form onSubmit={handleSubmit} className="panel-body">
-          {/* Job Type Selector */}
+          {/* Job Type Input */}
           <div className="form-section">
-            <label className="section-label">Select Job Type</label>
-            <div className="type-cards-grid">
-              {JOB_TYPES.map((type) => {
-                const Icon = type.icon;
-                const isSelected = selectedType === type.id;
-                return (
-                  <div
-                    key={type.id}
-                    className={`type-card ${isSelected ? 'selected' : ''}`}
-                    onClick={() => setSelectedType(type.id)}
-                  >
-                    <div className="type-card-top">
-                      <div className="type-card-icon-wrap">
-                        <Icon size={20} />
-                      </div>
-                      <span className={`type-badge ${type.badgeClass}`}>
-                        {type.badge}
-                      </span>
-                    </div>
-                    <div className="type-card-label">{type.label}</div>
-                    <div className="type-card-desc">{type.desc}</div>
-                  </div>
-                );
-              })}
+            <label className="section-label">Job Type</label>
+            <input
+              type="text"
+              className="custom-input"
+              value={jobType}
+              onChange={(e) => setJobType(e.target.value)}
+              placeholder="e.g. TEST, DATA_SYNC, WEBHOOK, EXPORT"
+              required
+            />
+            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+              <span className="field-hint">Quick types:</span>
+              {[
+                { type: 'HTTP_WEBHOOK', label: 'HTTP_WEBHOOK (Generic)', sample: {
+                  url: 'https://httpbin.org/post',
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: { event: 'order.completed', orderId: 'ord_99812', amount: 49.99 },
+                  rateLimitPerSecond: 10,
+                  timeoutSeconds: 15
+                }},
+                { type: 'TEST', label: 'TEST', sample: DEFAULT_PAYLOAD },
+                { type: 'DATA_SYNC', label: 'DATA_SYNC', sample: { source: 'crm', target: 'data-warehouse', syncMode: 'incremental' } },
+                { type: 'EXPORT', label: 'EXPORT', sample: { format: 'parquet', dateRange: 'last_30_days' } }
+              ].map((preset) => (
+                <button
+                  key={preset.type}
+                  type="button"
+                  style={{
+                    fontSize: '0.75rem',
+                    padding: '2px 8px',
+                    borderRadius: '4px',
+                    border: '1px solid var(--border-color, #30363d)',
+                    background: jobType === preset.type ? 'var(--primary-color, #238636)' : 'transparent',
+                    color: jobType === preset.type ? '#fff' : 'inherit',
+                    cursor: 'pointer'
+                  }}
+                  onClick={() => {
+                    setJobType(preset.type);
+                    setPayloadText(JSON.stringify(preset.sample, null, 2));
+                    setJsonError(null);
+                  }}
+                >
+                  {preset.label}
+                </button>
+              ))}
             </div>
           </div>
 
-          {/* Dynamic Payload Form */}
+          {/* Generic JSON Payload Form */}
           <div className="form-section">
-            <label className="section-label">Job Payload Configuration</label>
-            <div className="payload-box">
-              {selectedType === 'REPORT' && (
-                <div className="form-field">
-                  <label className="input-label">Report Title</label>
-                  <input
-                    type="text"
-                    className="custom-input"
-                    value={reportTitle}
-                    onChange={(e) => setReportTitle(e.target.value)}
-                    placeholder="e.g. System Health & Performance Audit"
-                  />
-                  <span className="field-hint">
-                    Worker will query live PostgreSQL job counts, durations & compute rates
-                  </span>
-                </div>
-              )}
-
-              {selectedType === 'PDF_GENERATION' && (
-                <>
-                  <div className="form-field">
-                    <label className="input-label">Customer / Company Name</label>
-                    <input
-                      type="text"
-                      className="custom-input"
-                      value={customerName}
-                      onChange={(e) => setCustomerName(e.target.value)}
-                      placeholder="e.g. Acme Global Corp"
-                    />
-                  </div>
-                  <div className="form-row">
-                    <div className="form-field" style={{ flex: 1 }}>
-                      <label className="input-label">Invoice ID</label>
-                      <input
-                        type="text"
-                        className="custom-input"
-                        value={invoiceId}
-                        onChange={(e) => setInvoiceId(e.target.value)}
-                      />
-                    </div>
-                    <div className="form-field" style={{ width: '130px' }}>
-                      <label className="input-label">Amount ($)</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        className="custom-input"
-                        value={amount}
-                        onChange={(e) => setAmount(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {selectedType === 'EMAIL' && (
-                <>
-                  <div className="form-field">
-                    <label className="input-label">Recipient Email</label>
-                    <input
-                      type="email"
-                      className="custom-input"
-                      value={recipientEmail}
-                      onChange={(e) => setRecipientEmail(e.target.value)}
-                    />
-                  </div>
-                  <div className="form-field">
-                    <label className="input-label">Subject</label>
-                    <input
-                      type="text"
-                      className="custom-input"
-                      value={subject}
-                      onChange={(e) => setSubject(e.target.value)}
-                    />
-                  </div>
-                  <div className="form-field">
-                    <label className="input-label">Email Template</label>
-                    <select
-                      className="custom-select"
-                      value={emailTemplate}
-                      onChange={(e) => setEmailTemplate(e.target.value)}
-                    >
-                      <option value="invoice_ready">Invoice Notification (Standard)</option>
-                      <option value="welcome">Welcome Onboarding</option>
-                      <option value="security_alert">System Security Alert</option>
-                    </select>
-                  </div>
-                </>
-              )}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+              <label className="section-label" style={{ margin: 0 }}>
+                <Code2 size={16} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'text-bottom' }} />
+                Job Payload (JSON)
+              </label>
+              <button
+                type="button"
+                style={{
+                  fontSize: '0.75rem',
+                  padding: '2px 8px',
+                  borderRadius: '4px',
+                  border: '1px solid var(--border-color, #30363d)',
+                  background: 'transparent',
+                  color: 'inherit',
+                  cursor: 'pointer'
+                }}
+                onClick={() => {
+                  try {
+                    const formatted = JSON.stringify(JSON.parse(payloadText), null, 2);
+                    setPayloadText(formatted);
+                    setJsonError(null);
+                  } catch (e) {
+                    // Ignore format error
+                  }
+                }}
+              >
+                Format JSON
+              </button>
             </div>
+            <textarea
+              className="custom-input mono-font"
+              style={{
+                width: '100%',
+                minHeight: '130px',
+                fontFamily: 'monospace',
+                fontSize: '0.85rem',
+                lineHeight: '1.4',
+                resize: 'vertical',
+                borderColor: jsonError ? '#f85149' : undefined
+              }}
+              value={payloadText}
+              onChange={handlePayloadChange}
+              placeholder="{}"
+            />
+            {jsonError ? (
+              <span style={{ color: '#f85149', fontSize: '0.75rem', display: 'block', marginTop: '4px' }}>
+                ⚠️ {jsonError}
+              </span>
+            ) : (
+              <span className="field-hint">
+                Arbitrary JSON object forwarded to the worker event bus.
+              </span>
+            )}
           </div>
 
           {/* Job Configuration: Priority & Max Retries */}
@@ -410,6 +354,21 @@ export default function CreateJob({ isOpen, onClose, onJobCreated, showToast }) 
             </div>
           </div>
 
+          {/* Optional Completion Callback Webhook URL */}
+          <div className="form-section">
+            <label className="section-label">Completion Callback Webhook (Optional)</label>
+            <input
+              type="url"
+              className="custom-input"
+              value={callbackUrl}
+              onChange={(e) => setCallbackUrl(e.target.value)}
+              placeholder="e.g. https://api.myrepo.com/webhooks/job-done"
+            />
+            <span className="field-hint">
+              JobFlow automatically POSTs job results & status to this URL upon SUCCESS or DLQ failure.
+            </span>
+          </div>
+
           {/* 🧪 Chaos Engineering Section */}
           <div className="chaos-container">
             <button
@@ -444,8 +403,7 @@ export default function CreateJob({ isOpen, onClose, onJobCreated, showToast }) 
                       <strong>Simulate Temporary Failure</strong>
                     </div>
                     <p>
-                      Injects <code>fail_attempts: 2</code>. Worker crashes on first 2 attempts,
-                      succeeds on attempt 3 via exponential backoff (1s → 2s).
+                      Injects <code>fail_attempts: 2</code>. Worker retries using exponential backoff (1s → 2s) before succeeding.
                     </p>
                   </div>
 
@@ -473,7 +431,7 @@ export default function CreateJob({ isOpen, onClose, onJobCreated, showToast }) 
               type="button"
               className="btn-blast"
               onClick={handleBatchBlast}
-              disabled={isSubmitting || isBlasting}
+              disabled={isSubmitting || isBlasting || Boolean(jsonError)}
               title="Spawn 5 concurrent jobs to watch parallel distribution"
             >
               {isBlasting ? (
@@ -490,7 +448,7 @@ export default function CreateJob({ isOpen, onClose, onJobCreated, showToast }) 
             <button
               type="submit"
               className="btn-submit-job"
-              disabled={isSubmitting || isBlasting}
+              disabled={isSubmitting || isBlasting || Boolean(jsonError)}
             >
               {isSubmitting ? (
                 <>

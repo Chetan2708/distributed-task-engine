@@ -54,15 +54,15 @@ public class JwtFilter extends OncePerRequestFilter {
                 username = jwtUtil.extractUsername(jwt);
             } catch (ExpiredJwtException e) {
                 logger.warn("JWT is expired: " + e.getMessage());
-                response.sendError(
-                        HttpServletResponse.SC_UNAUTHORIZED,
-                        "Token expired");
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                response.setContentType("application/json");
+                response.getWriter().write("{\"error\":\"UNAUTHORIZED\",\"message\":\"Token expired\"}");
                 return;
             } catch (Exception e) {
                 logger.warn("Invalid JWT: " + e.getMessage());
-                response.sendError(
-                        HttpServletResponse.SC_UNAUTHORIZED,
-                        "Invalid token");
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                response.setContentType("application/json");
+                response.getWriter().write("{\"error\":\"UNAUTHORIZED\",\"message\":\"Invalid token\"}");
                 return;
             }
         }
@@ -93,9 +93,9 @@ public class JwtFilter extends OncePerRequestFilter {
                 }
             } catch (UsernameNotFoundException e) {
                 logger.warn("User from token not found: " + username);
-                response.sendError(
-                        HttpServletResponse.SC_UNAUTHORIZED,
-                        "User not found");
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                response.setContentType("application/json");
+                response.getWriter().write("{\"error\":\"UNAUTHORIZED\",\"message\":\"User not found\"}");
                 return;
             }
         }

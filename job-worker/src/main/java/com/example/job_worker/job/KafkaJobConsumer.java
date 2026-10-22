@@ -28,9 +28,32 @@ public class KafkaJobConsumer {
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final RedissonClient redissonClient;
     private final TransactionTemplate transactionTemplate;
+    private final JobCallbackNotifier jobCallbackNotifier;
     private final com.google.gson.Gson gson = new com.google.gson.Gson();
 
     private final Map<String, JobHandler> handlers = new HashMap<>();
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public KafkaJobConsumer(JobRepository jobRepository,
+            ProcessedMessageRepository processedMessageRepository,
+            ScheduledRetryRepository scheduledRetryRepository,
+            KafkaTemplate<String, String> kafkaTemplate,
+            RedissonClient redissonClient,
+            TransactionTemplate transactionTemplate,
+            List<JobHandler> jobHandlers,
+            JobCallbackNotifier jobCallbackNotifier) {
+        this.jobRepository = jobRepository;
+        this.processedMessageRepository = processedMessageRepository;
+        this.scheduledRetryRepository = scheduledRetryRepository;
+        this.kafkaTemplate = kafkaTemplate;
+        this.redissonClient = redissonClient;
+        this.transactionTemplate = transactionTemplate;
+        this.jobCallbackNotifier = jobCallbackNotifier != null ? jobCallbackNotifier : new JobCallbackNotifier(null, null);
+
+        for (JobHandler handler : jobHandlers) {
+            this.handlers.put(handler.type(), handler);
+        }
+    }
 
     public KafkaJobConsumer(JobRepository jobRepository,
             ProcessedMessageRepository processedMessageRepository,
@@ -39,16 +62,7 @@ public class KafkaJobConsumer {
             RedissonClient redissonClient,
             TransactionTemplate transactionTemplate,
             List<JobHandler> jobHandlers) {
-        this.jobRepository = jobRepository;
-        this.processedMessageRepository = processedMessageRepository;
-        this.scheduledRetryRepository = scheduledRetryRepository;
-        this.kafkaTemplate = kafkaTemplate;
-        this.redissonClient = redissonClient;
-        this.transactionTemplate = transactionTemplate;
-
-        for (JobHandler handler : jobHandlers) {
-            this.handlers.put(handler.type(), handler);
-        }
+        this(jobRepository, processedMessageRepository, scheduledRetryRepository, kafkaTemplate, redissonClient, transactionTemplate, jobHandlers, null);
     }
 
     @KafkaListener(topics = "job-events", groupId = "job-worker-group")
@@ -134,8 +148,9 @@ public class KafkaJobConsumer {
                     job.setResult(result.getData());
                 }
                 job.transitionTo(JobStatus.SUCCESS);
-                jobRepository.save(job);
+                job = jobRepository.save(job);
                 log.info("Job {} completed successfully: {}", job.getId(), result.getMessage());
+                jobCallbackNotifier.sendCompletionNotification(job);
 
                 try {
                     ProcessedMessageEntity pm = new ProcessedMessageEntity();
@@ -196,11 +211,12 @@ public class KafkaJobConsumer {
                     job.setErrorMessage(e.getMessage());
                     try {
                         kafkaTemplate.send("job-dlq", gson.toJson(event)).join();
-                        jobRepository.save(job);
+                        job = jobRepository.save(job);
                     } catch (Exception ex) {
                         log.error("Failed to publish to DLQ or save FAILED state for job {}", job.getId(), ex);
                         throw new RuntimeException("DLQ publish failed", ex);
                     }
+                    jobCallbackNotifier.sendCompletionNotification(job);
                 }
             }
         } finally {

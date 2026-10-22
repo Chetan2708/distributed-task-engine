@@ -10,26 +10,44 @@ import {
   Layers,
   ArrowUpRight
 } from 'lucide-react';
-import { fetchWithAuth } from './api';
+import { fetchWithAuth, isCurrentUserAdmin } from './api';
 import { usePolling } from './usePolling';
 import { Link } from 'react-router-dom';
 
 export default function Dashboard({ onOpenCreateJob }) {
   const [stats, setStats] = useState(null);
+  const isAdmin = isCurrentUserAdmin();
   const [liveEnabled, setLiveEnabled] = useState(true);
   const [timeAgo, setTimeAgo] = useState('just now');
 
   const fetchStats = useCallback(async () => {
     try {
-      const res = await fetchWithAuth('/jobs/stats');
-      if (res.ok) {
-        const data = await res.json();
-        setStats(data);
+      if (isAdmin) {
+        const res = await fetchWithAuth('/jobs/stats');
+        if (res.ok) {
+          const data = await res.json();
+          setStats(data);
+        }
+      } else {
+        const jobsRes = await fetchWithAuth('/jobs?page=0&size=100');
+        if (jobsRes.ok) {
+          const jobsData = await jobsRes.json();
+          const list = jobsData.content || [];
+          const userStats = {
+            total: jobsData.totalElements ?? list.length,
+            queued: list.filter((j) => j.status === 'QUEUED' || j.status === 'CREATED').length,
+            processing: list.filter((j) => j.status === 'PROCESSING').length,
+            successful: list.filter((j) => j.status === 'SUCCESS').length,
+            failed: list.filter((j) => j.status === 'FAILED' || j.status === 'ERROR').length,
+            dlq: list.filter((j) => j.status === 'FAILED').length,
+          };
+          setStats(userStats);
+        }
       }
     } catch (err) {
       console.error('Error fetching dashboard stats:', err);
     }
-  }, []);
+  }, [isAdmin]);
 
   const { lastUpdated, isRefreshing, refreshNow } = usePolling(
     fetchStats,
@@ -55,11 +73,25 @@ export default function Dashboard({ onOpenCreateJob }) {
       <div className="page-header-row">
         <div>
           <div className="header-title-wrap">
-            <h2 className="page-title" style={{ margin: 0 }}>Cluster Dashboard</h2>
+            <h2 className="page-title" style={{ margin: 0 }}>
+              {isAdmin === false ? 'Personal Dashboard' : 'Cluster Dashboard'}
+            </h2>
             {liveEnabled && <span className="live-pulse-dot" title="Live Polling Active" />}
+            {isAdmin === false && (
+              <span className="sidebar-chip" style={{ background: '#238636', color: '#fff', fontSize: '0.7rem' }}>
+                USER
+              </span>
+            )}
+            {isAdmin === true && (
+              <span className="sidebar-chip" style={{ background: '#8957e5', color: '#fff', fontSize: '0.7rem' }}>
+                ADMIN
+              </span>
+            )}
           </div>
           <span className="page-subtitle">
-            Real-time telemetry from Kafka consumers and PostgreSQL outbox • Updated {timeAgo}
+            {isAdmin === false
+              ? `Real-time metrics for your dispatched jobs • Updated ${timeAgo}`
+              : `Real-time telemetry from Kafka consumers and PostgreSQL outbox • Updated ${timeAgo}`}
           </span>
         </div>
 
@@ -173,7 +205,7 @@ export default function Dashboard({ onOpenCreateJob }) {
           <h3>Interactive Distributed Architecture</h3>
           <p>
             Experience asynchronous job routing, Redis distributed locking, and Kafka Dead Letter
-            Queues in action. Submit real data analytics reports or inject intentional faults.
+            Queues in action. Dispatch background tasks or inject intentional faults.
           </p>
         </div>
         <div className="banner-actions">

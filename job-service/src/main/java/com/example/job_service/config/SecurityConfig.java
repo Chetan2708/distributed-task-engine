@@ -32,101 +32,109 @@ import java.util.Arrays;
 @RequiredArgsConstructor
 public class SecurityConfig {
 
-    private final JwtFilter jwtFilter;
+        private final JwtFilter jwtFilter;
+        private final ApiKeyFilter apiKeyFilter;
 
-    @Value("${jobflow.auth.user.username}")
-    private String userUsername;
+        @Value("${jobflow.auth.user.username}")
+        private String userUsername;
 
-    @Value("${jobflow.auth.user.password}")
-    private String userPassword;
+        @Value("${jobflow.auth.user.password}")
+        private String userPassword;
 
-    @Value("${jobflow.auth.admin.username}")
-    private String adminUsername;
+        @Value("${jobflow.auth.admin.username}")
+        private String adminUsername;
 
-    @Value("${jobflow.auth.admin.password}")
-    private String adminPassword;
+        @Value("${jobflow.auth.admin.password}")
+        private String adminPassword;
 
-    @Value("${app.frontend.url:http://localhost:5173}")
-    private String frontendUrl;
+        @Value("${app.frontend.url:http://localhost:5173}")
+        private String frontendUrl;
 
-    @Bean
-    public SecurityFilterChain filterChain(
-            HttpSecurity http) throws Exception {
+        @Bean
+        public SecurityFilterChain filterChain(
+                        HttpSecurity http) throws Exception {
 
-        http
-            .cors(cors -> cors.configurationSource(
-                    corsConfigurationSource()))
-            .csrf(csrf -> csrf.disable())
-            .sessionManagement(session ->
-                    session.sessionCreationPolicy(
-                            SessionCreationPolicy.STATELESS))
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/v1/auth/**").permitAll()
-                .requestMatchers("/actuator/health/**").permitAll()
-                .requestMatchers("/api/v1/jobs/stats").hasRole("ADMIN")
-                .requestMatchers("/api/v1/jobs/**").authenticated()
-                .anyRequest().authenticated()
-            )
-            .addFilterBefore(
-                    jwtFilter,
-                    UsernamePasswordAuthenticationFilter.class
-            );
+                http
+                                .cors(cors -> cors.configurationSource(
+                                                corsConfigurationSource()))
+                                .csrf(csrf -> csrf.disable())
+                                .sessionManagement(session -> session.sessionCreationPolicy(
+                                                SessionCreationPolicy.STATELESS))
+                                .authorizeHttpRequests(auth -> auth
+                                                .requestMatchers("/api/v1/auth/**").permitAll()
+                                                .requestMatchers("/actuator/health/**").permitAll()
+                                                .requestMatchers("/error").permitAll()
+                                                .requestMatchers("/api/v1/jobs/stats").hasRole("ADMIN")
+                                                .requestMatchers("/api/v1/jobs/**").authenticated()
+                                                .anyRequest().authenticated())
+                                .addFilterBefore(
+                                                apiKeyFilter,
+                                                UsernamePasswordAuthenticationFilter.class)
+                                .addFilterBefore(
+                                                jwtFilter,
+                                                UsernamePasswordAuthenticationFilter.class);
 
-        return http.build();
-    }
+                return http.build();
+        }
 
-    @Bean
-    public InMemoryUserDetailsManager userDetailsService() {
+        @Bean
+        public InMemoryUserDetailsManager userDetailsService() {
 
-        UserDetails user = User.builder()
-                .username(userUsername)
-                .password(passwordEncoder().encode(userPassword))
-                .roles("USER")
-                .build();
+                UserDetails user = User.builder()
+                                .username(userUsername)
+                                .password(passwordEncoder().encode(userPassword))
+                                .roles("USER")
+                                .build();
 
-        UserDetails admin = User.builder()
-                .username(adminUsername)
-                .password(passwordEncoder().encode(adminPassword))
-                .roles("ADMIN", "USER")
-                .build();
+                UserDetails admin = User.builder()
+                                .username(adminUsername)
+                                .password(passwordEncoder().encode(adminPassword))
+                                .roles("ADMIN", "USER")
+                                .build();
 
-        return new InMemoryUserDetailsManager(user, admin);
-    }
+                return new InMemoryUserDetailsManager(user, admin);
+        }
 
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
+        @Bean
+        public PasswordEncoder passwordEncoder() {
+                return new BCryptPasswordEncoder();
+        }
 
-    @Bean
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration authenticationConfiguration) throws Exception {
-        return authenticationConfiguration.getAuthenticationManager();
-    }
+        @Bean
+        public AuthenticationManager authenticationManager(AuthenticationConfiguration authenticationConfiguration)
+                        throws Exception {
+                return authenticationConfiguration.getAuthenticationManager();
+        }
 
-    @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
+        @Bean
+        public CorsConfigurationSource corsConfigurationSource() {
 
-        CorsConfiguration configuration = new CorsConfiguration();
+                CorsConfiguration configuration = new CorsConfiguration();
 
-        configuration.setAllowedOrigins(
-                Arrays.asList(frontendUrl));
+                configuration.setAllowedOriginPatterns(
+                                Arrays.asList(
+                                                "https://localhost*",
+                                                "http://localhost*",
+                                                "https://127.0.0.1*",
+                                                "http://127.0.0.1*",
+                                                frontendUrl,
+                                                "*"
+                                ));
 
-        configuration.setAllowedMethods(
-                Arrays.asList(
-                        "GET", "POST", "PUT",
-                        "DELETE", "OPTIONS"
-                ));
+                configuration.setAllowedMethods(
+                                Arrays.asList(
+                                                "GET", "POST", "PUT",
+                                                "DELETE", "OPTIONS", "PATCH"));
 
-        configuration.setAllowedHeaders(
-                Arrays.asList("*"));
+                configuration.setAllowedHeaders(
+                                Arrays.asList("*"));
 
-        configuration.setAllowCredentials(true);
+                configuration.setAllowCredentials(true);
 
-        UrlBasedCorsConfigurationSource source =
-                new UrlBasedCorsConfigurationSource();
+                UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
 
-        source.registerCorsConfiguration("/**", configuration);
+                source.registerCorsConfiguration("/**", configuration);
 
-        return source;
-    }
+                return source;
+        }
 }

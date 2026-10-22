@@ -30,83 +30,75 @@ import java.util.stream.Collectors;
 @CrossOrigin(origins = "${app.frontend.url:http://localhost:5173}")
 public class AuthController {
 
-    private final AuthenticationManager authenticationManager;
-    private final JwtUtil jwtUtil;
-    private final InMemoryUserDetailsManager userDetailsManager;
-    private final PasswordEncoder passwordEncoder;
+        private final AuthenticationManager authenticationManager;
+        private final JwtUtil jwtUtil;
+        private final InMemoryUserDetailsManager userDetailsManager;
+        private final PasswordEncoder passwordEncoder;
 
-    @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(
-            @Valid @RequestBody AuthRequest request) {
+        @PostMapping("/login")
+        public ResponseEntity<AuthResponse> login(
+                        @Valid @RequestBody AuthRequest request) {
 
-        UsernamePasswordAuthenticationToken authRequest =
-                new UsernamePasswordAuthenticationToken(
-                        request.getUsername().trim(),
-                        request.getPassword()
-                );
+                UsernamePasswordAuthenticationToken authRequest = new UsernamePasswordAuthenticationToken(
+                                request.getUsername().trim(),
+                                request.getPassword());
 
-        Authentication authentication =
-                authenticationManager
-                        .authenticate(authRequest);
+                Authentication authentication = authenticationManager
+                                .authenticate(authRequest);
 
-        String role = authentication.getAuthorities()
-                .stream()
-                .map(GrantedAuthority::getAuthority)
-                .collect(Collectors.joining(","));
+                String role = authentication.getAuthorities()
+                                .stream()
+                                .map(GrantedAuthority::getAuthority)
+                                .collect(Collectors.joining(","));
 
-        String token = jwtUtil.generateToken(
-                authentication.getName(), role
-        );
+                String token = jwtUtil.generateToken(
+                                authentication.getName(), role);
 
-        return ResponseEntity.ok(new AuthResponse(token));
-    }
-
-    @PostMapping("/register")
-    public ResponseEntity<AuthResponse> register(
-            @Valid @RequestBody AuthRequest request) {
-
-        String username = request.getUsername().trim();
-
-        if (username.length() < 3 || username.length() > 50) {
-            return ResponseEntity.badRequest().build();
+                return ResponseEntity.ok(new AuthResponse(token));
         }
 
-        if (userDetailsManager.userExists(username)) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).build();
+        @PostMapping("/register")
+        public ResponseEntity<AuthResponse> register(
+                        @Valid @RequestBody AuthRequest request) {
+
+                String username = request.getUsername().trim();
+
+                if (username.length() < 3 || username.length() > 50) {
+                        return ResponseEntity.badRequest().build();
+                }
+
+                if (userDetailsManager.userExists(username)) {
+                        return ResponseEntity.status(HttpStatus.CONFLICT).build();
+                }
+
+                userDetailsManager.createUser(
+                                User.withUsername(username)
+                                                .password(passwordEncoder.encode(
+                                                                request.getPassword()))
+                                                .roles("USER")
+                                                .build());
+
+                String token = jwtUtil.generateToken(
+                                username, "ROLE_USER");
+
+                return ResponseEntity.status(HttpStatus.CREATED)
+                                .body(new AuthResponse(token));
         }
 
-        userDetailsManager.createUser(
-                User.withUsername(username)
-                        .password(passwordEncoder.encode(
-                                request.getPassword()))
-                        .roles("USER")
-                        .build()
-        );
+        @Data
+        public static class AuthRequest {
 
-        String token = jwtUtil.generateToken(
-                username, "ROLE_USER"
-        );
+                @NotBlank(message = "Username is required")
+                @Size(min = 3, max = 50, message = "Username must be between 3 and 50 characters")
+                private String username;
 
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(new AuthResponse(token));
-    }
+                @NotBlank(message = "Password is required")
+                @Size(min = 8, max = 72, message = "Password must be between 8 and 72 characters")
+                private String password;
+        }
 
-    @Data
-    public static class AuthRequest {
-
-        @NotBlank(message = "Username is required")
-        @Size(min = 3, max = 50,
-              message = "Username must be between 3 and 50 characters")
-        private String username;
-
-        @NotBlank(message = "Password is required")
-        @Size(min = 8, max = 72,
-              message = "Password must be between 8 and 72 characters")
-        private String password;
-    }
-
-    @Data
-    public static class AuthResponse {
-        private final String token;
-    }
+        @Data
+        public static class AuthResponse {
+                private final String token;
+        }
 }

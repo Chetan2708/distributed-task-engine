@@ -102,6 +102,29 @@ public class JobStatsSecurityTest {
     }
 
     @Test
+    void getStats_withValidM2mApiKey_returnsOk() throws Exception {
+        mockMvc.perform(get("/api/v1/jobs/stats")
+                .header("X-API-KEY", "jobflow_live_secret_key_12345"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").exists());
+    }
+
+    @Test
+    void getStats_withAuthorizationApiKeyHeader_returnsOk() throws Exception {
+        mockMvc.perform(get("/api/v1/jobs/stats")
+                .header("Authorization", "ApiKey jobflow_live_secret_key_12345"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total").exists());
+    }
+
+    @Test
+    void getStats_withInvalidApiKey_returnsUnauthorized() throws Exception {
+        mockMvc.perform(get("/api/v1/jobs/stats")
+                .header("X-API-KEY", "wrong_invalid_key"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void jobServiceGetStats_whenUserRole_throwsAccessDeniedException() {
         UsernamePasswordAuthenticationToken userAuth = new UsernamePasswordAuthenticationToken(
                 "user", null, List.of(new SimpleGrantedAuthority("ROLE_USER")));

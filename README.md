@@ -108,27 +108,52 @@ stateDiagram-v2
 
 ## 🔐 Authentication & Authorization
 
-JobFlow secures all API endpoints with **JWT-based authentication** and **role-based access control (RBAC)**.
+JobFlow supports two authentication mechanisms:
+1. **Interactive UI Authentication**: JWT-based session tokens with role-based access control (RBAC: `USER` and `ADMIN`).
+2. **Machine-to-Machine (M2M) API Key**: Direct service-to-service communication for external microservices and repositories using `X-API-KEY` or `Authorization: ApiKey <KEY>`. Granted `ROLE_ADMIN` and `ROLE_USER` automatically.
 
-### Roles
-| Role | Permissions |
-|---|---|
-| `USER` | Create jobs, view own jobs |
-| `ADMIN` | Create jobs, view all jobs, access dashboard stats |
+### Roles & Machine Access
+| Subject | Auth Method | Permissions |
+|---|---|---|
+| `USER` | JWT `Bearer <token>` | Create jobs, view own jobs |
+| `ADMIN` | JWT `Bearer <token>` | Create jobs, view all jobs, access dashboard stats |
+| `M2M / Microservice` | Header `X-API-KEY: <key>` | Full programmatic access (create jobs, check status, read stats) |
 
-### Login Flow
-1. Client sends credentials to `POST /api/v1/auth/login`.
-2. Server returns a signed JWT token.
-3. All subsequent requests include the token as `Authorization: Bearer <token>`.
-4. The `JwtFilter` validates the token on every request and sets the security context.
+### Machine-to-Machine (M2M) Integration
+Other repositories can interact with JobFlow directly without a prior login call by supplying the pre-shared API key configured via `JOBFLOW_M2M_API_KEY`:
+```bash
+curl -X POST http://localhost:8080/api/v1/jobs \
+  -H "X-API-KEY: jobflow_live_secret_key_12345" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "HTTP_WEBHOOK",
+    "payload": {
+      "url": "https://api.myrepo.com/webhooks/order-shipped",
+      "method": "POST",
+      "headers": {
+        "Content-Type": "application/json",
+        "X-Webhook-Secret": "whsec_abc123"
+      },
+      "body": {
+        "event": "order.completed",
+        "orderId": "ord_10293",
+        "amount": 99.50
+      },
+      "rateLimitPerSecond": 10,
+      "timeoutSeconds": 15
+    },
+    "priority": 7,
+    "maxRetries": 3
+  }'
+```
 
-Credentials are configured via environment variables (see [Environment Setup](#-environment-setup)).
+---
 
 ## 📡 API Documentation
 
-> **Note:** All endpoints except `/api/v1/auth/**` require a valid JWT Bearer token.
+> **Note:** Endpoints accept either an `X-API-KEY` header (for M2M service calls) or a JWT Bearer token `Authorization: Bearer <token>` (for web clients).
 
-### Authenticate
+### Authenticate (Interactive Users)
 `POST /api/v1/auth/login`
 ```json
 {
@@ -146,30 +171,52 @@ Credentials are configured via environment variables (see [Environment Setup](#-
 ### Create Job
 `POST /api/v1/jobs`
 
-**Headers:** `Authorization: Bearer <token>`
+**Headers:** `X-API-KEY: <key>` or `Authorization: Bearer <token>`
+
+#### 1. Generic HTTP Webhook (`HTTP_WEBHOOK` or `WEBHOOK`)
+Offload outgoing HTTP notifications with per-host distributed rate limiting and automatic exponential backoff:
 ```json
 {
-  "type": "PDF_GENERATION",
+  "type": "HTTP_WEBHOOK",
   "payload": {
-    "userId": "123",
-    "template": "invoice"
+    "url": "https://target-service.com/api/callback",
+    "method": "POST",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "eventId": "evt_9982",
+      "status": "APPROVED"
+    },
+    "rateLimitPerSecond": 10,
+    "timeoutSeconds": 30
+  },
+  "priority": 5,
+  "maxRetries": 3
+}
+```
+- **2xx**: Succeeded and saved to database with target response body.
+- **5xx / 429 / Network timeout**: Retryable. Worker schedules durable retry using exponential backoff (1s → 2s → 4s).
+- **4xx (e.g. 400, 404)**: Non-retryable client error. Fails immediately and routes to DLQ without wasteful retries.
+- **Distributed Rate Limiting**: Workers coordinate outgoing rate via Redisson token bucket (`ratelimit:webhook:<host>`) across the entire worker cluster.
+
+#### 2. Generic Task
+```json
+{
+  "type": "DATA_SYNC",
+  "payload": {
+    "source": "orders",
+    "destination": "snowflake"
   },
   "priority": 5,
   "maxRetries": 3
 }
 ```
 
-**Supported Job Types:**
-| Type | Handler | Simulated Duration |
-|---|---|---|
-| `PDF_GENERATION` | `PdfJobHandler` | ~3s |
-| `EMAIL` | `EmailJobHandler` | ~1.5s |
-| `REPORT` | `ReportJobHandler` | ~5s |
-
 ### Get Job Status
 `GET /api/v1/jobs/{jobId}`
 
-**Headers:** `Authorization: Bearer <token>`
+**Headers:** `X-API-KEY: <key>` or `Authorization: Bearer <token>`
 
 *Users can only view their own jobs. Admins can view all jobs.*
 
@@ -220,7 +267,7 @@ To prevent edge cases where two workers might receive identical events simultane
 When a job exceeds its `maxRetries`, it is marked as `FAILED` and published to a special `job-dlq` Kafka topic for manual engineering intervention. Additionally, malformed or unparseable messages are routed to a `job-events-invalid` topic, and events with no registered handler are routed to `job-events-dlq`, ensuring the main consumer is never blocked by poison pills.
 
 ### 7. Strategy Pattern for Extensible Task Processing
-The worker engine employs the **Strategy Pattern** via a flexible `JobHandler` interface. Instead of hardcoding task logic, developers can create distinct job handlers (`PdfJobHandler`, `EmailJobHandler`, `ReportJobHandler`, etc.) that the worker dynamically selects based on the event payload. Adding a new job type requires only implementing the `JobHandler` interface and annotating with `@Component` — zero changes to the consumer or routing logic.
+The worker engine employs the **Strategy Pattern** via a flexible `JobHandler` interface. Instead of hardcoding task logic, developers can create distinct job handlers (`JobHandler` implementations annotated with `@Component`) that the worker dynamically selects based on the event's `type`. Adding a new job type requires only implementing the `JobHandler` interface — zero changes to the consumer or routing logic.
 
 ### 8. Synchronous Offsets & Consumer Concurrency
 To guarantee zero message loss, the worker processes each task synchronously within the `KafkaListener` thread. This prevents Spring Kafka from committing the consumer offset until the task is definitively completed or securely scheduled for a durable retry. We achieve high throughput and horizontal scalability by running multiple worker replicas and increasing the Kafka topic's partition count, allowing the consumer group to naturally balance the load across the cluster.
@@ -281,15 +328,85 @@ TOKEN=$(curl -s -X POST http://localhost:8080/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"user","password":"your_password"}' | jq -r '.token')
 
-# Create a job
+# Create a job with completion webhook callback
 curl -X POST http://localhost:8080/api/v1/jobs \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
-  -d '{"type":"PDF_GENERATION","payload":{"template":"invoice"},"maxRetries":3}'
+  -d '{
+    "type": "HTTP_WEBHOOK",
+    "callbackUrl": "https://api.myrepo.com/webhooks/job-done",
+    "payload": {
+      "url": "https://api.external.com/process",
+      "method": "POST",
+      "body": { "taskId": "tsk_123" }
+    },
+    "maxRetries": 3
+  }'
 
 # Check job status
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/v1/jobs/{jobId}
 ```
+
+---
+
+## ⚡ Lightweight 1-Node Kafka & HTTPS Reverse Proxy Deployment
+
+For production deployments on memory-constrained VPS instances (or cloud environments where 3 Kafka brokers consume too much RAM), JobFlow includes a **lightweight, production-grade 1-Node Kafka configuration** with an **Nginx HTTPS / Reverse Proxy**:
+
+```
+[ Internet Traffic ]
+        │
+        ├── Port 80 (HTTP)
+        └── Port 443 (HTTPS / SSL Termination)
+                 │
+     [ Nginx Reverse Proxy ]
+        ├── /api/*      ──► [ Job Service (8080) ]
+        ├── /actuator/* ──► [ Job Service (8080) ]
+        └── /*          ──► [ React Frontend (80) ]
+```
+
+### 1. Start with 1-Node Kafka + HTTPS
+```bash
+# 1. (Optional) Generate self-signed SSL certs for local HTTPS testing
+bash nginx/generate-certs.sh   # On Linux/macOS
+nginx\generate-certs.bat      # On Windows
+
+# 2. Boot up production stack
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+### 2. Advantages of `docker-compose.prod.yml`
+- **Minimal RAM Footprint**: Replaces the 3-node Kafka cluster with a streamlined 1-node KRaft broker, saving over **1.5 GB of RAM**.
+- **SSL / TLS Termination**: Built-in Nginx container terminates HTTPS on port 443 with modern TLSv1.2/1.3 ciphers, HSTS, and gzip compression.
+- **Unified Single Ingress**: All internal microservices (`job-service`, `job-worker`, `postgres`, `redis`, `kafka`) remain shielded within the internal Docker bridge network (`jobflow-net`), with only ports 80/443 exposed publicly.
+- **Alternative Caddy Support**: A [`caddy/Caddyfile`](file:///l:/My%20stuff/Worker%20SpringBoot/jobflow/caddy/Caddyfile) is also provided for automatic Let's Encrypt certificates.
+
+### 3. Webhook Completion Notifications (`callbackUrl`)
+JobFlow allows other systems to receive an asynchronous HTTP POST webhook notification when a task completes or fails:
+- Supply `callbackUrl` at the top level or inside `payload` (`callbackUrl` or `callback_url`).
+- When the job reaches `SUCCESS`, the worker sends:
+  ```json
+  {
+    "event": "job.completed",
+    "jobId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+    "type": "HTTP_WEBHOOK",
+    "status": "SUCCESS",
+    "result": { "statusCode": 200 },
+    "durationMs": 420,
+    "completedAt": "2026-10-22T12:00:00"
+  }
+  ```
+- If retries are exhausted and the job is sent to the Dead Letter Queue (`FAILED`), it sends:
+  ```json
+  {
+    "event": "job.failed",
+    "jobId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+    "type": "HTTP_WEBHOOK",
+    "status": "FAILED",
+    "errorMessage": "Target returned HTTP 500",
+    "retryCount": 3
+  }
+  ```
 
 ## 🎥 Demo
 Check out the fully functional dashboard in action, monitoring 100+ async jobs seamlessly recovering from errors and scaling!
