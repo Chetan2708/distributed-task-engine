@@ -127,6 +127,7 @@ public class KafkaJobConsumer {
                 job.transitionTo(JobStatus.PROCESSING);
                 job = jobRepository.save(job);
                 log.info("Job {} claimed and is now PROCESSING (Attempt {})", job.getId(), job.getRetryCount() + 1);
+                publishJobStatusEvent(job, "PROCESSING", null);
             } catch (org.springframework.orm.ObjectOptimisticLockingFailureException e) {
                 log.warn("Job {} was claimed by another worker concurrently. Skipping.", event.getJobId());
                 return;
@@ -150,6 +151,7 @@ public class KafkaJobConsumer {
                 job.transitionTo(JobStatus.SUCCESS);
                 job = jobRepository.save(job);
                 log.info("Job {} completed successfully: {}", job.getId(), result.getMessage());
+                publishJobStatusEvent(job, "SUCCESS", null);
                 jobCallbackNotifier.sendCompletionNotification(job);
 
                 try {
@@ -193,6 +195,7 @@ public class KafkaJobConsumer {
 
                             scheduledRetryRepository.save(retry);
                         });
+                        publishJobStatusEvent(job, "ERROR", e.getMessage());
                     } catch (Exception retryPersistenceFailure) {
                         log.error(
                                 "Could not persist retry for job {}",
@@ -216,12 +219,32 @@ public class KafkaJobConsumer {
                         log.error("Failed to publish to DLQ or save FAILED state for job {}", job.getId(), ex);
                         throw new RuntimeException("DLQ publish failed", ex);
                     }
+                    publishJobStatusEvent(job, "FAILED", e.getMessage());
                     jobCallbackNotifier.sendCompletionNotification(job);
                 }
             }
         } finally {
             if (lock.isHeldByCurrentThread()) {
                 lock.unlock();
+            }
+        }
+    }
+
+    private void publishJobStatusEvent(JobEntity job, String status, String errorMessage) {
+        if (redissonClient != null && job != null) {
+            try {
+                com.example.job_worker.job.dto.JobStatusEvent statusEvent =
+                        new com.example.job_worker.job.dto.JobStatusEvent(
+                                job.getId(),
+                                status,
+                                job.getType(),
+                                job.getUserId(),
+                                java.time.Instant.now().toString(),
+                                errorMessage
+                        );
+                redissonClient.getTopic("jobflow:events").publish(gson.toJson(statusEvent));
+            } catch (Exception e) {
+                log.warn("Failed to publish job event to Redis Pub/Sub: {}", e.getMessage());
             }
         }
     }

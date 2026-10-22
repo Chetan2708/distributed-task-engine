@@ -10,8 +10,7 @@ import {
   RefreshCw,
   Sparkles
 } from 'lucide-react';
-import { fetchWithAuth } from './api';
-import { usePolling } from './usePolling';
+import { fetchWithAuth, subscribeToJobStream } from './api';
 
 export default function Jobs({ onOpenCreateJob }) {
   const [jobs, setJobs] = useState([]);
@@ -19,6 +18,7 @@ export default function Jobs({ onOpenCreateJob }) {
   const [totalPages, setTotalPages] = useState(0);
   const [totalElements, setTotalElements] = useState(0);
   const [liveEnabled, setLiveEnabled] = useState(true);
+  const [sseConnected, setSseConnected] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // Keep track of recent job IDs for highlight effect
@@ -59,7 +59,35 @@ export default function Jobs({ onOpenCreateJob }) {
     }
   }, [page]);
 
-  const { isRefreshing, refreshNow } = usePolling(fetchJobs, 2000, liveEnabled);
+  // Initial fetch on mount or page change
+  useEffect(() => {
+    fetchJobs();
+  }, [fetchJobs]);
+
+  // Real-time SSE push stream
+  useEffect(() => {
+    if (!liveEnabled) {
+      setSseConnected(false);
+      return;
+    }
+
+    const unsubscribe = subscribeToJobStream(
+      (event) => {
+        fetchJobs();
+      },
+      (err) => {
+        setSseConnected(false);
+      },
+      (conn) => {
+        setSseConnected(true);
+      }
+    );
+
+    return () => {
+      unsubscribe();
+      setSseConnected(false);
+    };
+  }, [liveEnabled, fetchJobs]);
 
   const getBadgeClass = (status) => {
     switch (status) {
@@ -84,10 +112,16 @@ export default function Jobs({ onOpenCreateJob }) {
         <div>
           <div className="header-title-wrap">
             <h2 className="page-title" style={{ margin: 0 }}>Jobs Pipeline</h2>
-            {liveEnabled && <span className="live-pulse-dot" title="Live Auto-Refresh Active" />}
+            {liveEnabled && (
+              <span
+                className="live-pulse-dot"
+                style={{ background: sseConnected ? '#2ea043' : '#d29922' }}
+                title={sseConnected ? 'Real-Time SSE Push Active (0 Polling)' : 'Connecting to Stream...'}
+              />
+            )}
           </div>
           <span className="page-subtitle">
-            Showing {jobs.length} of {totalElements} cluster tasks • Auto-syncing
+            Showing {jobs.length} of {totalElements} cluster tasks • Real-time event push
           </span>
         </div>
 
@@ -96,11 +130,12 @@ export default function Jobs({ onOpenCreateJob }) {
             type="button"
             className={`live-toggle-btn ${liveEnabled ? 'active' : ''}`}
             onClick={() => setLiveEnabled(!liveEnabled)}
-            title={liveEnabled ? 'Pause live polling' : 'Resume live polling'}
+            title={liveEnabled ? 'Pause live stream' : 'Resume live SSE stream'}
           >
             {liveEnabled ? (
               <>
-                <Pause size={14} /> Live Stream (2s)
+                <Zap size={14} style={{ color: sseConnected ? '#2ea043' : '#d29922' }} />
+                {sseConnected ? 'SSE Live Stream' : 'Connecting...'}
               </>
             ) : (
               <>
@@ -112,7 +147,7 @@ export default function Jobs({ onOpenCreateJob }) {
           <button
             type="button"
             className="btn-icon-action"
-            onClick={refreshNow}
+            onClick={fetchJobs}
             title="Refresh now"
           >
             <RefreshCw size={15} />

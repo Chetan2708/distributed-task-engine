@@ -57,3 +57,37 @@ export const isCurrentUserAdmin = () => {
   const role = getUserRole();
   return Boolean(role && role.includes('ROLE_ADMIN'));
 };
+
+export const subscribeToJobStream = (onEvent, onError, onConnected) => {
+  const token = localStorage.getItem('token');
+  if (!token) return () => {};
+
+  const url = `${BASE_URL}/jobs/stream?token=${encodeURIComponent(token)}`;
+  const eventSource = new EventSource(url);
+
+  eventSource.addEventListener('connected', (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      if (onConnected) onConnected(data);
+    } catch (err) {
+      // ignore
+    }
+  });
+
+  eventSource.addEventListener('job_event', (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      if (onEvent) onEvent(data);
+    } catch (err) {
+      console.error('Failed to parse SSE job event:', err);
+    }
+  });
+
+  eventSource.onerror = (err) => {
+    if (onError) onError(err);
+  };
+
+  return () => {
+    eventSource.close();
+  };
+};

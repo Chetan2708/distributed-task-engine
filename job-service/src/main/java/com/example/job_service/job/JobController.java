@@ -3,13 +3,15 @@ package com.example.job_service.job;
 import com.example.job_service.job.dto.CreateJobRequest;
 import com.example.job_service.job.dto.CreateJobResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -20,6 +22,7 @@ import java.util.UUID;
 public class JobController {
 
     private final JobService jobService;
+    private final JobEventStreamService eventStreamService;
 
     @PostMapping
     public ResponseEntity<CreateJobResponse> createJob(@Valid @RequestBody CreateJobRequest request) {
@@ -43,4 +46,11 @@ public class JobController {
         return ResponseEntity.ok(jobService.getStats());
     }
 
+    @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamJobEvents(Authentication authentication) {
+        String username = authentication != null ? authentication.getName() : "anonymous";
+        boolean isAdmin = authentication != null && authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+        return eventStreamService.subscribe(username, isAdmin);
+    }
 }

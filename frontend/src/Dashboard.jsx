@@ -10,15 +10,17 @@ import {
   Layers,
   ArrowUpRight
 } from 'lucide-react';
-import { fetchWithAuth, isCurrentUserAdmin } from './api';
-import { usePolling } from './usePolling';
+import { fetchWithAuth, isCurrentUserAdmin, subscribeToJobStream } from './api';
 import { Link } from 'react-router-dom';
 
 export default function Dashboard({ onOpenCreateJob }) {
   const [stats, setStats] = useState(null);
   const isAdmin = isCurrentUserAdmin();
   const [liveEnabled, setLiveEnabled] = useState(true);
+  const [sseConnected, setSseConnected] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(Date.now());
   const [timeAgo, setTimeAgo] = useState('just now');
+  const [lastEvent, setLastEvent] = useState(null);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -27,6 +29,7 @@ export default function Dashboard({ onOpenCreateJob }) {
         if (res.ok) {
           const data = await res.json();
           setStats(data);
+          setLastUpdated(Date.now());
         }
       } else {
         const jobsRes = await fetchWithAuth('/jobs?page=0&size=100');
@@ -42,6 +45,7 @@ export default function Dashboard({ onOpenCreateJob }) {
             dlq: list.filter((j) => j.status === 'FAILED').length,
           };
           setStats(userStats);
+          setLastUpdated(Date.now());
         }
       }
     } catch (err) {
@@ -49,11 +53,36 @@ export default function Dashboard({ onOpenCreateJob }) {
     }
   }, [isAdmin]);
 
-  const { lastUpdated, isRefreshing, refreshNow } = usePolling(
-    fetchStats,
-    2000,
-    liveEnabled
-  );
+  // Initial fetch on mount or role change
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
+
+  // Real-Time Push Stream via Server-Sent Events (SSE) - No periodic polling!
+  useEffect(() => {
+    if (!liveEnabled) {
+      setSseConnected(false);
+      return;
+    }
+
+    const unsubscribe = subscribeToJobStream(
+      (event) => {
+        setLastEvent(event);
+        fetchStats();
+      },
+      (err) => {
+        setSseConnected(false);
+      },
+      (conn) => {
+        setSseConnected(true);
+      }
+    );
+
+    return () => {
+      unsubscribe();
+      setSseConnected(false);
+    };
+  }, [liveEnabled, fetchStats]);
 
   // Update "X seconds ago" ticker
   useEffect(() => {
@@ -76,7 +105,13 @@ export default function Dashboard({ onOpenCreateJob }) {
             <h2 className="page-title" style={{ margin: 0 }}>
               {isAdmin === false ? 'Personal Dashboard' : 'Cluster Dashboard'}
             </h2>
-            {liveEnabled && <span className="live-pulse-dot" title="Live Polling Active" />}
+            {liveEnabled && (
+              <span
+                className="live-pulse-dot"
+                style={{ background: sseConnected ? '#2ea043' : '#d29922' }}
+                title={sseConnected ? 'Real-Time SSE Push Active (0 Polling)' : 'Connecting to Event Stream...'}
+              />
+            )}
             {isAdmin === false && (
               <span className="sidebar-chip" style={{ background: '#238636', color: '#fff', fontSize: '0.7rem' }}>
                 USER
@@ -90,9 +125,17 @@ export default function Dashboard({ onOpenCreateJob }) {
           </div>
           <span className="page-subtitle">
             {isAdmin === false
-              ? `Real-time metrics for your dispatched jobs • Updated ${timeAgo}`
-              : `Real-time telemetry from Kafka consumers and PostgreSQL outbox • Updated ${timeAgo}`}
+              ? `Real-time push metrics for your dispatched jobs • Updated ${timeAgo}`
+              : `Real-time telemetry streamed via Kafka, Redis & SSE • Updated ${timeAgo}`}
           </span>
+          {lastEvent && (
+            <div style={{ marginTop: '0.25rem', fontSize: '0.75rem', color: '#58a6ff' }}>
+              ⚡ Last Event: Job <code>{String(lastEvent.jobId).slice(0, 8)}</code> transitioned to{' '}
+              <strong style={{ color: lastEvent.status === 'SUCCESS' ? '#3fb950' : lastEvent.status === 'FAILED' ? '#f85149' : '#d29922' }}>
+                {lastEvent.status}
+              </strong>
+            </div>
+          )}
         </div>
 
         <div className="header-actions">
@@ -100,11 +143,12 @@ export default function Dashboard({ onOpenCreateJob }) {
             type="button"
             className={`live-toggle-btn ${liveEnabled ? 'active' : ''}`}
             onClick={() => setLiveEnabled(!liveEnabled)}
-            title={liveEnabled ? 'Pause live auto-refresh' : 'Resume 2s live auto-refresh'}
+            title={liveEnabled ? 'Pause real-time push stream' : 'Resume real-time push stream'}
           >
             {liveEnabled ? (
               <>
-                <Pause size={14} /> Live Sync (2s)
+                <Zap size={14} style={{ color: sseConnected ? '#2ea043' : '#d29922' }} />
+                {sseConnected ? 'SSE Live Stream' : 'Connecting...'}
               </>
             ) : (
               <>

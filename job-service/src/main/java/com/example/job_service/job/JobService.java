@@ -26,6 +26,9 @@ public class JobService {
     private final OutboxEventRepository outboxEventRepository;
     private final Gson gson = new Gson();
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private JobEventStreamService eventStreamService;
+
     @Transactional
     public JobEntity createJob(CreateJobRequest request) {
         JobEntity job = new JobEntity();
@@ -68,6 +71,17 @@ public class JobService {
                 savedJob.getId(), savedJob.getType());
         outboxEvent.setPayload(gson.toJson(event));
         outboxEventRepository.save(outboxEvent);
+
+        if (eventStreamService != null) {
+            eventStreamService.publishEvent(new com.example.job_service.job.dto.JobStatusEvent(
+                    savedJob.getId(),
+                    savedJob.getStatus().name(),
+                    savedJob.getType(),
+                    savedJob.getUserId(),
+                    java.time.Instant.now().toString(),
+                    null
+            ));
+        }
 
         return savedJob;
     }
